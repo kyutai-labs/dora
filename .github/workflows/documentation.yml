@@ -10,13 +10,13 @@ jobs:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: 3.8
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install '.[dev]'
-        git config --global user.email "defossez@fb.com"
+        git config --global user.email "alex@kyutai.org"
         git config --global user.name "Alexandre Défossez (autodoc)"
         export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
