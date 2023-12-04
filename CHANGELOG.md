@@ -14,6 +14,8 @@ the `DORA_FORCE_DISTRIB=1` env variable. Always export LOCAL_RANK when running w
 
 Not longer store the XP in the _SubmitItTarget in order to avoid potential pickling errors.
 
+Adding `post_git_save_commands` to run commands from the clone of the repo when using git save.
+
 ## [0.1.12] - 2023-05-23
 
 Fixed bug with PL (Thanks @kingjr).

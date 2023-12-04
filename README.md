@@ -33,7 +33,7 @@ width="1000px"></p>
 ```bash
 # For bleeding edge
 pip install -U git+https://github.com/facebookincubator/submitit@main#egg=submitit
-pip install -U git+https://git@github.com/facebookresearch/dora#egg=dora-search
+pip install -U git+https://git@github.com/0x53504852/dora#egg=dora-search
 
 # For stable release
 pip install -U dora-search

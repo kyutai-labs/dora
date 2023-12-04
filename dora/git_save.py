@@ -28,7 +28,10 @@ class CommandError(Exception):
 def run_command(command, **kwargs):
     proc = sp.run(command, stdout=sp.PIPE, stderr=sp.STDOUT, **kwargs)
     if proc.returncode:
-        command_str = " ".join(shlex.quote(c) for c in command)
+        if isinstance(command, str):
+            command_str = command
+        else:
+            command_str = " ".join(shlex.quote(c) for c in command)
         raise CommandError(
             f"Command {command_str} failed ({proc.returncode}): \n" + proc.stdout.decode())
     return proc.stdout.decode().strip()
@@ -109,6 +112,8 @@ def get_new_clone(main: DecoratedMain) -> Path:
     target = codes / commit
     if not target.exists():
         target = shallow_clone(source, target)
+        for command in main.dora.post_git_save_commands:
+            run_command(command, shell=True, cwd=target)
     assert target.exists()
     return target
 

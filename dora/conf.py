@@ -155,6 +155,7 @@ class DoraConfig:
     dir: Path = Path("./outputs")  # where everything will be stored
     exclude: tp.List[str] = field(default_factory=list)
     git_save: bool = False
+    post_git_save_commands: tp.List[str] = field(default_factory=list)
     shared: tp.Optional[Path] = None  # Optional path for shared XPs.
     grid_package: tp.Optional[str] = None
 
