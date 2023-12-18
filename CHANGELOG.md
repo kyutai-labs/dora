@@ -16,6 +16,8 @@ Not longer store the XP in the _SubmitItTarget in order to avoid potential pickl
 
 Adding `post_git_save_commands` to run commands from the clone of the repo when using git save.
 
+Adding support for srun args.
+
 ## [0.1.12] - 2023-05-23
 
 Fixed bug with PL (Thanks @kingjr).

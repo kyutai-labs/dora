@@ -95,6 +95,8 @@ class SlurmConfig:
     qos: tp.Optional[str] = None
     account: tp.Optional[str] = None
     dependents: int = 0
+    force_chdir: bool = True
+    srun_args: tp.List[str] = field(default_factory=list)
 
 
 @dataclass
