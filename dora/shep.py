@@ -452,23 +452,24 @@ class Shepherd:
             if use_git_save:
                 assert self._existing_git_clone is not None
                 stack.enter_context(git_save.enter_clone(self._existing_git_clone))
-            if is_array:
-                stack.enter_context(executor.batch())
-            for sheep in job_array.sheeps:
-                if use_git_save:
-                    assert self._existing_git_clone is not None
-                    git_save.assign_clone(sheep.xp, self._existing_git_clone)
-                jobs.append(executor.submit(
-                    _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
-                if slurm_config.dependents:
-                    assert len(job_array.sheeps) == 1
-                    for dep_index in range(slurm_config.dependents):
-                        requeue = dep_index == slurm_config.dependents - 1
-                        last_job_id = jobs[-1].job_id
-                        executor.update_parameters(
-                            additional_parameters={'dependency': f"afternotok:{last_job_id}"})
-                        jobs.append(executor.submit(
-                            _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
+            with ExitStack() as array_stack:
+                if is_array:
+                    array_stack.enter_context(executor.batch())
+                for sheep in job_array.sheeps:
+                    if use_git_save:
+                        assert self._existing_git_clone is not None
+                        git_save.assign_clone(sheep.xp, self._existing_git_clone)
+                    jobs.append(executor.submit(
+                        _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
+                    if slurm_config.dependents:
+                        assert len(job_array.sheeps) == 1
+                        for dep_index in range(slurm_config.dependents):
+                            requeue = dep_index == slurm_config.dependents - 1
+                            last_job_id = jobs[-1].job_id
+                            executor.update_parameters(
+                                additional_parameters={'dependency': f"afternotok:{last_job_id}"})
+                            jobs.append(executor.submit(
+                                _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
             dependent_jobs = []
             if slurm_config.dependents:
                 dependent_jobs = jobs[1:]
