@@ -20,6 +20,8 @@ Adding support for srun args.
 
 Fixing issue with job array crashing.
 
+Fixed docker support through `force_chdir` param.
+
 ## [0.1.12] - 2023-05-23
 
 Fixed bug with PL (Thanks @kingjr).
