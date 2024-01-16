@@ -39,17 +39,19 @@ def register_preemption_callaback(callback: PreemptionCallback):
 
 
 class _SubmitItTarget:
-    def __call__(self, main: DecoratedMain, argv: tp.Sequence[str], requeue: bool = True):
+    def __call__(self, main_pickled: bytes, argv: tp.Sequence[str], requeue: bool = True):
         from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
         dora_chdir = os.environ.get('_DORA_CHDIR_SLURM', None)
         if dora_chdir is not None:
             os.chdir(dora_chdir)
+            sys.path.insert(0, '.')
         self.requeue = requeue
         spec = get_distrib_spec()
         # We export the RANK as it can be used to customize logging early on
         # in the called program (e.g. using Hydra).
         os.environ['RANK'] = str(spec.rank)
         sys.argv[1:] = argv
+        main = pickle.loads(main_pickled)
         main()
 
     def checkpoint(self, *args, **kwargs):
@@ -355,7 +357,7 @@ class Shepherd:
             kwargs['nodes'] = 1
         no_gpus = gpus == 0
         if no_gpus:
-            gpus = 1
+            gpus_per_node = 1
         mem_per_gpu = slurm_config.mem_per_gpu
         if mem_per_gpu:
             mem = slurm_config.mem_per_gpu * gpus_per_node
@@ -449,6 +451,7 @@ class Shepherd:
             if xp.rendezvous_file.exists():
                 xp.rendezvous_file.unlink()
 
+        main_pickled = pickle.dumps(self.main)
         jobs: tp.List[submitit.Job] = []
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
@@ -465,7 +468,7 @@ class Shepherd:
                         assert self._existing_git_clone is not None
                         git_save.assign_clone(sheep.xp, self._existing_git_clone)
                     jobs.append(executor.submit(
-                        _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
+                        _SubmitItTarget(), main_pickled, sheep.xp.argv, requeue))
                     if slurm_config.dependents:
                         assert len(job_array.sheeps) == 1
                         for dep_index in range(slurm_config.dependents):
@@ -474,7 +477,7 @@ class Shepherd:
                             executor.update_parameters(
                                 additional_parameters={'dependency': f"afternotok:{last_job_id}"})
                             jobs.append(executor.submit(
-                                _SubmitItTarget(), self.main, sheep.xp.argv, requeue))
+                                _SubmitItTarget(), main_pickled, sheep.xp.argv, requeue))
             dependent_jobs = []
             if slurm_config.dependents:
                 dependent_jobs = jobs[1:]
