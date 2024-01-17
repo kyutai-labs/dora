@@ -1,5 +1,5 @@
 hydra-core
-pytorch_lightning
+pytorch_lightning<=1.8
 git+https://github.com/facebookincubator/submitit@main#egg=submitit
 torch
 retrying
