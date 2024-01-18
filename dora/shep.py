@@ -345,7 +345,8 @@ class Shepherd:
         os.environ['SLURM_KILL_BAD_EXIT'] = '1'  # Kill the job if any of the task fails
         kwargs = dict(slurm_config.__dict__)
         executor = submitit.SlurmExecutor(
-            folder=folder, max_num_timeout=kwargs.pop('max_num_timeout'))
+            folder=folder, max_num_timeout=kwargs.pop('max_num_timeout'),
+            python=kwargs.pop('python'))
         gpus = slurm_config.gpus
         if gpus > 8:
             if gpus % 8 != 0:

@@ -74,6 +74,9 @@ class SlurmConfig:
         account (str or None): account param for slurm.
         dependents (int): if > 0, start a number of dependent jobs. Requeuing
             will be deactivated and rely on dependent jobs instead.
+        force_chdir (bool): set to True when using a container image.
+        srun_args (list[str]): extra srun args, useful for using a container image.
+        python (str or None): indicate to submitit to use an alternative python.
 
     ..warning:: this assumes one task per GPU.
         Set `one_task_per_node` if you do not want that.
@@ -97,6 +100,7 @@ class SlurmConfig:
     dependents: int = 0
     force_chdir: bool = True
     srun_args: tp.List[str] = field(default_factory=list)
+    python: tp.Optional[str] = None
 
 
 @dataclass
