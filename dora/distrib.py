@@ -8,7 +8,6 @@ from collections import namedtuple
 import logging
 import os
 import random
-import subprocess as sp
 
 import submitit
 from submitit.slurm.slurm import _parse_node_group
