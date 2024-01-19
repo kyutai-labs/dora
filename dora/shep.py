@@ -41,10 +41,6 @@ def register_preemption_callaback(callback: PreemptionCallback):
 class _SubmitItTarget:
     def __call__(self, main_pickled: bytes, argv: tp.Sequence[str], requeue: bool = True):
         from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
-        dora_chdir = os.environ.get('_DORA_CHDIR_SLURM', None)
-        if dora_chdir is not None:
-            os.chdir(dora_chdir)
-            sys.path.insert(0, '.')
         self.requeue = requeue
         spec = get_distrib_spec()
         # We export the RANK as it can be used to customize logging early on
@@ -374,9 +370,14 @@ class Shepherd:
             kwargs['ntasks_per_node'] = gpus_per_node
             if slurm_config.cpus_per_task is None:
                 kwargs['cpus_per_task'] = slurm_config.cpus_per_gpu
+        container_chdir = kwargs.pop('container_chdir')
         force_chdir = kwargs.pop('force_chdir')
-        if force_chdir:
-            os.environ['_DORA_CHDIR_SLURM'] = os.getcwd()
+        if force_chdir is not None:
+            container_chdir = force_chdir
+        if container_chdir:
+            srun_args = kwargs.get('srun_args', [])
+            srun_args.extend(['--container-workdir', os.getcwd()])
+            kwargs['srun_args'] = srun_args
         del kwargs['gpus']
         del kwargs['mem_per_gpu']
         del kwargs['cpus_per_gpu']

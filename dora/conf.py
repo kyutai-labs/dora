@@ -74,7 +74,8 @@ class SlurmConfig:
         account (str or None): account param for slurm.
         dependents (int): if > 0, start a number of dependent jobs. Requeuing
             will be deactivated and rely on dependent jobs instead.
-        force_chdir (bool): set to True when using a container image.
+        container_chdir (bool): set to True when using a container image to chdir.
+        force_chdir (bool or None): same as container_chdir, kept for compat.
         srun_args (list[str]): extra srun args, useful for using a container image.
         python (str or None): indicate to submitit to use an alternative python.
 
@@ -98,7 +99,8 @@ class SlurmConfig:
     qos: tp.Optional[str] = None
     account: tp.Optional[str] = None
     dependents: int = 0
-    force_chdir: bool = True
+    container_chdir: bool = False
+    force_chdir: tp.Optional[bool] = None
     srun_args: tp.List[str] = field(default_factory=list)
     python: tp.Optional[str] = None
 
