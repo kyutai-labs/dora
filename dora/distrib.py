@@ -10,7 +10,7 @@ import os
 import random
 
 import submitit
-from submitit.slurm.slurm import _parse_node_group
+from submitit.slurm.slurm import _parse_node_list
 import torch
 
 from .xp import get_xp
@@ -34,7 +34,7 @@ def set_distrib_env():
     if 'MASTER_ADDR' not in os.environ:
         assert 'SLURM_JOB_NODELIST' in os.environ, "case not handled"
         nodelist = os.environ['SLURM_JOB_NODELIST']
-        nodes = _parse_node_group(nodelist)
+        nodes = _parse_node_list(nodelist)
         master_node = nodes[0]
         os.environ['MASTER_ADDR'] = master_node
     if 'MASTER_PORT' not in os.environ:
