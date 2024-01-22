@@ -458,10 +458,10 @@ class Shepherd:
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
         with self._enter_orphan(name), ExitStack() as stack:
-            executor = self._get_submitit_executor(name, submitit_folder, slurm_config)
             if use_git_save:
                 assert self._existing_git_clone is not None
                 stack.enter_context(git_save.enter_clone(self._existing_git_clone))
+            executor = self._get_submitit_executor(name, submitit_folder, slurm_config)
             with ExitStack() as array_stack:
                 if is_array:
                     array_stack.enter_context(executor.batch())
