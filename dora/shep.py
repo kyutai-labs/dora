@@ -57,13 +57,14 @@ class _SubmitItTarget:
                 target_folder = Path(stack.enter_context(tempfile.TemporaryDirectory()))
                 logger.info("Extracting tar file %s to %s", tar_path, target_folder)
                 git_save.run_command(["tar", "xf", str(tar_path)], cwd=target_folder)
-                code_folder = target_folder / tar_path.stem
-                if not code_folder.exists():
-                    logger.critical("Could not find code folder %s", code_folder)
+                local_code_folder = target_folder / tar_path.stem
+                if not local_code_folder.exists():
+                    logger.critical("Could not find code folder %s", local_code_folder)
                 sys.path.remove(os.getcwd())
-                os.chdir(code_folder)
-                sys.path.insert(0, ".")  # chdir after start of process are too late for imports.
-                logger.info("Successfully changed dir to %s", code_folder)
+                os.chdir(local_code_folder)
+                sys.path.insert(0, str(local_code_folder))
+                logger.info("Successfully changed dir to %s", local_code_folder)
+                logger.info("sys.path is now %r", sys.path)
 
             from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
             self.requeue = requeue
