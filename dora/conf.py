@@ -154,6 +154,8 @@ class DoraConfig:
         git_save (bool): when True, experiments can only be scheduled from a clean repo.
             A shallow clone of the repo will be made and execution will happen from there.
             This does not impact `dora run` unless you pass the `--git_save` flag.
+        post_git_save_commands (list[str]): sequence of commands to run on a fresh git clone.
+        local_code (bool): if True, copies the git clone into /tmp before running.
         shared (Path or None): if provided, the path to a central repository of XPs.
             For the moment, this only supports sharing hyper-params, logs etc. will stay
             in the per user folder.
@@ -164,6 +166,7 @@ class DoraConfig:
     exclude: tp.List[str] = field(default_factory=list)
     git_save: bool = False
     post_git_save_commands: tp.List[str] = field(default_factory=list)
+    local_code: bool = False
     shared: tp.Optional[Path] = None  # Optional path for shared XPs.
     grid_package: tp.Optional[str] = None
 

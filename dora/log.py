@@ -130,7 +130,8 @@ def setup_logging(verbose=False):
     logger = logging.getLogger('dora')
     logger.setLevel(log_level)
     _dora_handler = logging.StreamHandler(sys.stderr)
-    _dora_handler.setFormatter(logging.Formatter('%(levelname)s:%(name)s:%(message)s'))
+    _dora_handler.setFormatter(
+        logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'))
     _dora_handler.setLevel(log_level)
     logger.addHandler(_dora_handler)
 

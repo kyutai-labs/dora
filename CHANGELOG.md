@@ -23,6 +23,8 @@ Fixing issue with job array crashing.
 Fixed docker support through `force_chdir` param.
 Improved docker support with `container_chdir`.
 
+Added option to run code locally. Changed Hydra flags so that only rank 0 logs the `.hydra/*.yaml` files
+
 ## [0.1.12] - 2023-05-23
 
 Fixed bug with PL (Thanks @kingjr).

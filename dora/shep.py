@@ -14,6 +14,7 @@ import pickle
 import os
 import subprocess as sp
 import sys
+import tempfile
 import typing as tp
 
 
@@ -22,6 +23,7 @@ import submitit
 
 from . import git_save
 from .conf import SlurmConfig, SubmitRules
+from .log import disable_logging, setup_logging
 from .main import DecoratedMain
 from .utils import try_load
 from .xp import XP, _get_sig, get_xp
@@ -39,16 +41,42 @@ def register_preemption_callaback(callback: PreemptionCallback):
 
 
 class _SubmitItTarget:
-    def __call__(self, main_pickled: bytes, argv: tp.Sequence[str], requeue: bool = True):
-        from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
-        self.requeue = requeue
-        spec = get_distrib_spec()
-        # We export the RANK as it can be used to customize logging early on
-        # in the called program (e.g. using Hydra).
-        os.environ['RANK'] = str(spec.rank)
-        sys.argv[1:] = argv
-        main = pickle.loads(main_pickled)
-        main()
+    def __call__(self, main_pickled: bytes, argv: tp.Sequence[str], requeue: bool = True,
+                 local_code: bool = False):
+        setup_logging()
+        logger.info("SubmitItTarget starting, python is %s, version is %r",
+                    sys.executable, sys.version)
+        logger.info("CWD is %s", os.getcwd())
+        with ExitStack() as stack:
+            if local_code:
+                code_path = Path('.').resolve()
+                tar_path = code_path.parent / (code_path.name + ".tar")
+                if not tar_path.exists():
+                    logger.critical("Could not find tar file %s to run the code locally", tar_path)
+                    sys.exit(1)
+                target_folder = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+                logger.info("Extracting tar file %s to %s", tar_path, target_folder)
+                git_save.run_command(["tar", "xf", str(tar_path)], cwd=target_folder)
+                code_folder = target_folder / tar_path.stem
+                if not code_folder.exists():
+                    logger.critical("Could not find code folder %s", code_folder)
+                sys.path.remove(os.getcwd())
+                os.chdir(code_folder)
+                sys.path.insert(0, ".")  # chdir after start of process are too late for imports.
+                logger.info("Successfully changed dir to %s", code_folder)
+
+            from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
+            self.requeue = requeue
+            spec = get_distrib_spec()
+            # We export the RANK as it can be used to customize logging early on
+            # in the called program (e.g. using Hydra).
+            os.environ['RANK'] = str(spec.rank)
+            sys.argv[1:] = argv
+            logger.info("Loading pickled main")
+            main = pickle.loads(main_pickled)
+            logger.info("Going into main")
+            disable_logging()  # undo our configuration of logging to let the called code handle it.
+            main()
 
     def checkpoint(self, *args, **kwargs):
         from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
@@ -454,6 +482,9 @@ class Shepherd:
                 xp.rendezvous_file.unlink()
 
         main_pickled = pickle.dumps(self.main)
+        if self.main.dora.local_code:
+            assert use_git_save, "Cannot use local_code without git_save !"
+        submitit_args = [main_pickled, sheep.xp.argv, requeue, self.main.dora.local_code]
         jobs: tp.List[submitit.Job] = []
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
@@ -469,8 +500,7 @@ class Shepherd:
                     if use_git_save:
                         assert self._existing_git_clone is not None
                         git_save.assign_clone(sheep.xp, self._existing_git_clone)
-                    jobs.append(executor.submit(
-                        _SubmitItTarget(), main_pickled, sheep.xp.argv, requeue))
+                    jobs.append(executor.submit(_SubmitItTarget(), *submitit_args))
                     if slurm_config.dependents:
                         assert len(job_array.sheeps) == 1
                         for dep_index in range(slurm_config.dependents):
@@ -478,8 +508,7 @@ class Shepherd:
                             last_job_id = jobs[-1].job_id
                             executor.update_parameters(
                                 additional_parameters={'dependency': f"afternotok:{last_job_id}"})
-                            jobs.append(executor.submit(
-                                _SubmitItTarget(), main_pickled, sheep.xp.argv, requeue))
+                            jobs.append(executor.submit(_SubmitItTarget(), *submitit_args))
             dependent_jobs = []
             if slurm_config.dependents:
                 dependent_jobs = jobs[1:]

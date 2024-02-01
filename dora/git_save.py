@@ -114,6 +114,11 @@ def get_new_clone(main: DecoratedMain) -> Path:
         target = shallow_clone(source, target)
         for command in main.dora.post_git_save_commands:
             run_command(command, shell=True, cwd=target)
+    if main.dora.local_code:
+        tar_file = Path(str(target) + ".tar")
+        if not tar_file.exists():
+            run_command(["tar", "cf", tar_file, target.name], cwd=target.parent)
+        assert tar_file.exists()
     assert target.exists()
     return target
 

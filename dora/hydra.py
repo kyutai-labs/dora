@@ -31,6 +31,7 @@ else:
 from omegaconf.dictconfig import DictConfig
 
 from .conf import DoraConfig, SlurmConfig, update_from_hydra
+from .distrib import get_distrib_spec
 from .main import DecoratedMain, MainFun
 from .xp import XP, get_xp, is_xp
 
@@ -224,6 +225,8 @@ class HydraMain(DecoratedMain):
         if is_xp():
             run_dir = f"hydra.run.dir={get_xp().folder}"
             sys.argv.append(run_dir)
+            if get_distrib_spec().rank > 0:
+                sys.argv.append("hydra.output_subdir=null")
         try:
             return hydra.main(
                 config_name=self.config_name,
