@@ -110,15 +110,21 @@ def get_new_clone(main: DecoratedMain) -> Path:
     codes = main.dora.dir / main.dora._codes
     codes.mkdir(parents=True, exist_ok=True)
     target = codes / commit
+    tar_file = Path(str(target) + ".tar")
     if not target.exists():
         target = shallow_clone(source, target)
         for command in main.dora.post_git_save_commands:
             run_command(command, shell=True, cwd=target)
-    if main.dora.local_code:
-        tar_file = Path(str(target) + ".tar")
-        if not tar_file.exists():
+        if main.dora.local_code:
+            assert not tar_file.exists()
             run_command(["tar", "cf", tar_file, target.name], cwd=target.parent)
-        assert tar_file.exists()
+            assert tar_file.exists()
+    elif main.dora.local_code:
+        if not tar_file.exists():
+            raise RuntimeError(
+                f'Repository clone {target} already exists, but tar file {tar_file} does not. '
+                'This could happen if you interrupted a previous dora command before it completed. '
+                'To resolve the issue, please delete {target} and retry.')
     assert target.exists()
     return target
 
