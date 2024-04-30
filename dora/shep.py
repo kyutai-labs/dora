@@ -167,10 +167,12 @@ class Sheep:
             assert self.job is not None
             assert len(self._other_jobs) <= 1
             chain = [self.job] + self._dependent_jobs
+            state = None
             for job in chain:
                 state = Sheep._get_state(job, [], mode)
                 if state == 'COMPLETED' or not Sheep._is_done(job, mode):
                     return state
+            assert state is not None
             return state
         else:
             return self._get_state(self.job, self._other_jobs, mode)
@@ -195,9 +197,10 @@ class Sheep:
     def log(self):
         """Return the path to the main log.
         """
-        if self.job is None:
+        job_id = self.current_job_id
+        if job_id is None:
             return None
-        return self._log(self.current_job_id)
+        return self._log(job_id)
 
     def __repr__(self):
         out = f"Sheep({self.xp.sig}, state={self.state()}, "
@@ -485,7 +488,6 @@ class Shepherd:
         main_pickled = pickle.dumps(self.main)
         if self.main.dora.local_code:
             assert use_git_save, "Cannot use local_code without git_save !"
-        submitit_args = [main_pickled, sheep.xp.argv, requeue, self.main.dora.local_code]
         jobs: tp.List[submitit.Job] = []
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
@@ -501,6 +503,8 @@ class Shepherd:
                     if use_git_save:
                         assert self._existing_git_clone is not None
                         git_save.assign_clone(sheep.xp, self._existing_git_clone)
+                    submitit_args = [main_pickled, sheep.xp.argv,
+                                     requeue, self.main.dora.local_code]
                     jobs.append(executor.submit(_SubmitItTarget(), *submitit_args))
                     if slurm_config.dependents:
                         assert len(job_array.sheeps) == 1
