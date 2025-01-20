@@ -410,6 +410,10 @@ class Shepherd:
             srun_args = kwargs.get('srun_args', [])
             srun_args.extend(['--container-workdir', os.getcwd()])
             kwargs['srun_args'] = srun_args
+        additional: dict[str, tp.Any] = {}
+        if kwargs.get('nodelist') is not None:
+            additional['nodelist'] = ",".join(kwargs.pop('nodelist'))
+        kwargs['additional_parameters'] = additional
         del kwargs['gpus']
         del kwargs['mem_per_gpu']
         del kwargs['cpus_per_gpu']

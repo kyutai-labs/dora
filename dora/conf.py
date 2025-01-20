@@ -103,6 +103,7 @@ class SlurmConfig:
     force_chdir: tp.Optional[bool] = None
     srun_args: tp.List[str] = field(default_factory=list)
     python: tp.Optional[str] = None
+    nodelist: list[str] | None = None
 
 
 @dataclass
