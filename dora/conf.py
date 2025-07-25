@@ -125,6 +125,7 @@ class ShepConfig:
     There should be little reasons to change that.
     """
     job_file: str = "job.pkl"
+    json_job_file: str = "job.json"
     by_id: str = "by_id"
     orphans: str = "orphans"
     submitit_folder: str = "submitit"

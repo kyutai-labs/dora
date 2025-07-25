@@ -92,6 +92,10 @@ class Sheep:
     def _job_file(self) -> Path:
         return self.xp.folder / self.xp.dora.shep.job_file
 
+    @property
+    def _json_job_file(self) -> Path:
+        return self.xp.folder / self.xp.dora.shep.json_job_file
+
     @staticmethod
     def _get_state(job, other_jobs=[], mode="standard"):
         """Return the current state of the `Sheep`.
@@ -137,10 +141,12 @@ class Sheep:
             assert self.job is not None
             assert len(self._other_jobs) <= 1
             chain = [self.job] + self._dependent_jobs
+            state = None
             for job in chain:
                 state = Sheep._get_state(job, [], mode)
                 if state == 'COMPLETED' or not Sheep._is_done(job, mode):
                     return state
+            assert state is not None
             return state
         else:
             return self._get_state(self.job, self._other_jobs, mode)
@@ -165,9 +171,10 @@ class Sheep:
     def log(self):
         """Return the path to the main log.
         """
-        if self.job is None:
+        current_job_id = self.current_job_id
+        if current_job_id is None:
             return None
-        return self._log(self.current_job_id)
+        return self._log(current_job_id)
 
     def __repr__(self):
         out = f"Sheep({self.xp.sig}, state={self.state()}, "
@@ -473,6 +480,13 @@ class Shepherd:
             for sheep, job in zip(sheeps, jobs):
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
                 pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
+                job_info_for_json = {
+                    'job_id': job.job_id,
+                    'array_job_ids': [other_job.job_id for other_job in jobs],
+                    'dependent_job_ids': [other_job.job_id for other_job in dependent_jobs],
+                    'slurm_config':
+
+                }
                 logger.debug("Created job with id %s", job.job_id)
                 sheep.job = job  # type: ignore
                 sheep._other_jobs = jobs  # type: ignore
