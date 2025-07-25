@@ -122,6 +122,10 @@ class Sheep:
     def _job_file(self) -> Path:
         return self.xp.folder / self.xp.dora.shep.job_file
 
+    @property
+    def _json_job_file(self) -> Path:
+        return self.xp.folder / self.xp.dora.shep.json_job_file
+
     @staticmethod
     def _get_state(job, other_jobs=[], mode="standard"):
         """Return the current state of the `Sheep`.
@@ -527,6 +531,13 @@ class Shepherd:
             for sheep, job in zip(sheeps, jobs):
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
                 pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
+                job_info_for_json = {
+                    'job_id': job.job_id,
+                    'array_job_ids': [other_job.job_id for other_job in jobs],
+                    'dependent_job_ids': [other_job.job_id for other_job in dependent_jobs],
+                    'slurm_config':
+
+                }
                 logger.debug("Created job with id %s", job.job_id)
                 sheep.job = job  # type: ignore
                 sheep._other_jobs = jobs  # type: ignore
