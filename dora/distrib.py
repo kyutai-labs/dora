@@ -60,7 +60,7 @@ def set_distrib_env():
 
 def get_distrib_spec():
     """Return information on the distributed setup, i.e. world size, rank etc.
-    This can be used even before distributed training is initialized. 
+    This can be used even before distributed training is initialized.
     """
     if 'WORLD_SIZE' in os.environ:
         rank = int(os.environ['RANK'])
