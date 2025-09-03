@@ -1,3 +1,58 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dora_search"
+description = "Easy grid searches for ML."
+authors = [
+    {name = "Alexandre Défossez", email = "alex@gradium.ai"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.7.0"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "omegaconf",
+    "retrying",
+    "submitit",
+    "treetable",
+    "torch",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/gradium-ai/dora"
+
+[project.scripts]
+dora = "dora.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "flake8",
+    "hiplot",
+    "hydra-core",
+    "hydra_colorlog",
+    "mypy",
+    "pdoc3",
+    "pytest",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+
+[tool.setuptools.package-data]
+dora = ["py.typed"]
+
+[tool.setuptools.dynamic]
+version = {attr = "dora.__version__"}
+
 [tool.pytest.ini_options]
 testpaths = [
     "dora",

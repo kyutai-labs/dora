@@ -52,7 +52,7 @@ setup(
     },
     extras_require={
         'dev': ['coverage', 'flake8', 'hiplot', 'hydra-core', 'hydra_colorlog',
-                'mypy', 'pdoc3', 'pytest', 'pytorch_lightning'],
+                'mypy', 'pdoc3', 'pytest'],
     },
     license='MIT',
     classifiers=[
