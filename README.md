@@ -3,7 +3,7 @@
 ![tests badge](https://github.com/0x53504852/dora/workflows/tests/badge.svg)
 ![linter badge](https://github.com/0x53504852/dora/workflows/linter/badge.svg)
 
-This is a fork of [facebookresearch/dora](https://github.com/facebookresearch/dora), as I (adefossez) left Meta since a while now and need my own fork.
+This is a fork of [facebookresearch/dora](https://github.com/facebookresearch/dora), as we diverged a bit from upstream.
 
 
 <p align="center">
