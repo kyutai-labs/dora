@@ -3,6 +3,8 @@
 ![tests badge](https://github.com/kyutai-labs/dora/workflows/tests/badge.svg)
 ![linter badge](https://github.com/kyutai-labs/dora/workflows/linter/badge.svg)
 
+This is a fork of [facebookresearch/dora](https://github.com/facebookresearch/dora), as we diverged a bit from upstream.
+
 
 <p align="center">
 <img src="./dora.png" alt="Dora logo, picturing a schematic Dora in front of a computer."
