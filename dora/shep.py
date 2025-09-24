@@ -7,7 +7,8 @@
 """Scheduling and job monitoring utilities.
 """
 from contextlib import contextmanager, ExitStack
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+import json
 import logging
 from pathlib import Path
 import pickle
@@ -121,6 +122,10 @@ class Sheep:
     @property
     def _job_file(self) -> Path:
         return self.xp.folder / self.xp.dora.shep.job_file
+
+    @property
+    def _json_job_file(self) -> Path:
+        return self.xp.folder / self.xp.dora.shep.json_job_file
 
     @staticmethod
     def _get_state(job, other_jobs=[], mode="standard"):
@@ -525,6 +530,14 @@ class Shepherd:
 
             # Now we can access jobs
             for sheep, job in zip(sheeps, jobs):
+                job_info_for_json = {
+                    'job_id': job.job_id,
+                    'array_job_ids': [other_job.job_id for other_job in jobs],
+                    'dependent_job_ids': [other_job.job_id for other_job in dependent_jobs],
+                    'slurm_config': asdict(slurm_config),
+
+                }
+                sheep._json_job_file.write_text(json.dumps(job_info_for_json))
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
                 pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
                 logger.debug("Created job with id %s", job.job_id)
