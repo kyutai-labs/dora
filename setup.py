@@ -16,7 +16,7 @@ DESCRIPTION = 'Easy grid searches for ML.'
 URL = 'https://github.com/facebookresearch/dora'
 EMAIL = 'defossez@fb.com'
 AUTHOR = 'Alexandre Défossez'
-REQUIRES_PYTHON = '>=3.7.0'
+REQUIRES_PYTHON = '>=3.10.0'
 
 for line in open('dora/__init__.py'):
     line = line.strip()
