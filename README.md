@@ -94,8 +94,7 @@ Some Dora concepts:
 
 In order to derive the XP signature, Dora must know about the configuration schema your project is following, as well as
 the parsed arguments for a run.
-Dora supports two backends for that : `argparse`, and `hydra`. On top of that, Dora provides a smooth integration
-with Pytorch Lightning for projects that uses it.
+Dora supports two backends for that : `argparse`, and `hydra`.
 
 In all cases, you must have a specific python package (which we will call here `myproj`),
 with a `train` module in it, (i.e. `myproj.train` module, stored in the `myproj/train.py` file.)
@@ -186,41 +185,7 @@ dora:
     git_save: true  # set git_save option for the project.
 ```
 
-### PyTorch Lightning support
-
-**Deprecated:** Due to a lack of internal use for PL, this only works with fairly old versions of PL. We are not planning on updating the support for PL.
-
-Dora supports PyTorch Lightning (PL) out of the box. Dora will automatically
-capture logged metrics (make sure to use `per_epoch=True`), and handles distribution
-(you should not pass `gpus=...` or `num_nodes=...` to PL).
-
-```python
-import dora.lightning
-
-
-@dora.argparse_main(...)
-def main():
-    xp = dora.get_xp()
-    args = xp.cfg
-    # Replace Pytorch lightning `Trainer(...)` with the following:
-    trainer = dora.lightning.get_trainer(...)
-    # Or when using argparse parsing:
-    trainer = dora.lightning.trainer_from_argparse_args(args)
-```
-
-See [examples/pl/train.py](examples/pl/train.py) for a full example including
-automatic reloading of the last checkpoint, logging etc.
-
-
-**Important:** Dora deactivates the default PL behavior of dumping a mid-epoch
-checkpoint upon preemption, as this lead to non deterministic behavior
-(as PL would skip this epoch upon restart). Dora assumes you save checkpoints
-from time to time (e.g. every epoch). To get back the old behavior,
-pass `no_unfinished_epochs=False` to `get_trainer`. See [examples/pl/train.py](examples/pl/train.py)
-for an example of how to implement checkpointing in a reliable manner.
-
-
-### Distributed training support (non PyTorch Lightning)
+### Distributed training support
 
 Dora supports distributed training, and makes a few assumptions for you.  You should initialize distributed training through Dora, by calling in your `main` function:
 
@@ -228,9 +193,6 @@ Dora supports distributed training, and makes a few assumptions for you.  You sh
 import dora.distrib
 dora.distrib.init()
 ```
-
-**Note:** This is not required for Pytorch Lightning users, see the PL section hereafter, everything will be setup automatically for you :)
-
 
 ### Git Save
 
@@ -281,8 +243,7 @@ or setting the `DORA_MAIN_MODULE` env variable.
 
 ### Examples
 
-See the [examples](examples/) folder for a few examples using argparse, Hydra
-and Pytorch Lightning, in order to test the commands described here.
+See the [examples](examples/) folder for a few examples using argparse and Hydra, in order to test the commands described here.
 To play with them, first install Dora (`pip install .` from the top-level of the repo), then `cd examples`, and use `dora -P example_name ...`
 to let Dora know which example to use!
 
@@ -324,7 +285,7 @@ If you have a Slurm cluster available, you should usually prefer using the `dora
 
 ## `dora launch`: Launching XP remotely
 
-**Warning:** This command is not recommended for serious workflows. First it doesn't allow for advanced tuning of the Slurm config, 
+**Warning:** This command is not recommended for serious workflows. First it doesn't allow for advanced tuning of the Slurm config,
 and in almost all cases, it is preferable to use the `dora grid` command, even for a single job, as the grid system allows for a better tracking and book keeping
 of the experiments you launch on the cluster.
 

@@ -25,6 +25,10 @@ Improved docker support with `container_chdir`.
 
 Added option to run code locally. Changed Hydra flags so that only rank 0 logs the `.hydra/*.yaml` files
 
+Removed lightning.
+
+Added json files to easily get the job id.
+
 ## [0.1.12] - 2023-05-23
 
 Fixed bug with PL (Thanks @kingjr).
