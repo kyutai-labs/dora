@@ -60,7 +60,7 @@ width="400px"></p>
 __pdoc__ = {}
 __pdoc__['tests'] = False
 
-__version__ = "0.1.13a20"
+__version__ = "0.1.13a21"
 
 # flake8: noqa
 from .explore import Explorer, Launcher
@@ -76,3 +76,10 @@ from .link import Link
 from .main import argparse_main
 from .shep import Sheep
 from .xp import get_xp, is_xp, XP
+
+__all__ = [
+    "Explorer", "Launcher",
+    "hydra_main", "conf", "grid",
+    "to_absolute_path", "Link",
+    "argparse_main", "Sheep", "get_xp", "is_xp", "XP"
+]
