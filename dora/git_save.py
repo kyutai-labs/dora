@@ -9,6 +9,7 @@ import importlib.util
 import logging
 import os
 import shlex
+import sys
 import subprocess as sp
 import typing as tp
 from pathlib import Path
@@ -181,13 +182,18 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
     if '_DORA_ORIGINAL_DIR' not in os.environ:
         # We did not use git_save, we check first if Hydra is used,
         # in which case we use it to convert to an absolute Path.
-        try:
-            import hydra.utils
-        except ImportError:
+        # Looked up rather than imported: Hydra's version only differs from
+        # plain cwd resolution once Hydra is running and has moved the working
+        # directory, and it cannot be running if it was never imported. This
+        # matters because `DoraConfig.__setattr__` calls this on every `dir`
+        # assignment, so importing Hydra here would put it back on the path of
+        # anything that merely constructs a config.
+        hydra_utils = sys.modules.get('hydra.utils')
+        if hydra_utils is None:
             if not _path.is_absolute():
                 _path = Path(os.getcwd()) / _path
         else:
-            _path = Path(hydra.utils.to_absolute_path(str(_path)))
+            _path = Path(hydra_utils.to_absolute_path(str(_path)))
         return klass(_path)
     else:
         # We used git_save, in which case we used the original dir saved by Dora.
