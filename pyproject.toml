@@ -57,3 +57,6 @@ version = {attr = "dora.__version__"}
 testpaths = [
     "dora",
 ]
+
+[tool.uv]
+exclude-newer = "7 days"
