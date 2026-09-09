@@ -169,3 +169,40 @@ def test_read_only_shepherd_refuses_to_commit(tmpdir):
         assert not (main.dora.dir / main.dora.shep.orphans).exists()
         with pytest.raises(RuntimeError, match="read_only"):
             shepherd.commit()
+
+
+def test_plan_reports_stale_experiments(tmpdir, capsys):
+    """Launching an edited grid cancels the experiments it no longer produces,
+    so `plan` has to say which those are before anyone launches."""
+    from ..inspect import plan_action
+
+    with mock_shep():
+        main = get_main(tmpdir)
+        args = RunGridArgs(monitor=False, dry_run=False, silent=True)
+        run_grid(main, Explorer(explore_1), "unittest_plan",
+                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        capsys.readouterr()
+
+        # explore_2 produces a different XP, so everything explore_1 scheduled
+        # is now stale.
+        import types
+        grid = types.SimpleNamespace(explorer=Explorer(explore_2))
+        import dora.grid as grid_module
+        original = grid_module._get_explore
+        grid_module._get_explore = lambda a, m: grid.explorer
+        try:
+            plan_action(_PlanArgs(grid="unittest_plan"), main)
+        finally:
+            grid_module._get_explore = original
+
+        out = capsys.readouterr().out
+        assert "would be CANCELLED" in out
+        assert "1 new" in out
+
+
+class _PlanArgs:
+    def __init__(self, grid):
+        self.grid = grid
+        self.patterns = []
+        self.json = False
+        self.limit = None

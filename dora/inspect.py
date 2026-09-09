@@ -685,3 +685,61 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
             lines.append(f"... same on {others} other rank(s)")
     emit(lines)
     return 0
+
+
+def plan_action(args: tp.Any, main: tp.Any) -> int:
+    """Resolve a grid to the experiments it would schedule, without scheduling.
+
+    Unlike the read-only commands this has to import the project and evaluate
+    the grid file -- there is no way to know what an explorer produces without
+    running it -- so it is as slow as the project's import. What it avoids is
+    the twenty kilobytes of table that `dora grid --dry_run` prints to say the
+    same thing, and it names the experiments the grid has stopped producing,
+    which a real launch would silently cancel.
+    """
+    from .conf import SubmitRules
+    from .grid import RunGridArgs, _get_explore, run_grid
+
+    explorer = _get_explore(args, main)
+    grid_args = RunGridArgs(monitor=False, silent=True, dry_run=True,
+                            patterns=list(args.patterns or []))
+    sheeps = run_grid(main, explorer, args.grid, rules=SubmitRules(),
+                      slurm=main.get_slurm_config(), args=grid_args)
+
+    dora = main.dora
+    grid_folder = dora.dir / dora._grids / args.grid
+    produced = {sheep.xp.sig for sheep in sheeps}
+    existing = ({c.name for c in grid_folder.iterdir()}
+                if grid_folder.is_dir() else set())
+    stale = sorted(existing - produced)
+
+    try:
+        names, base = main.get_names([sheep.xp for sheep in sheeps])
+    except Exception:
+        names, base = [sheep.xp.sig for sheep in sheeps], ""
+
+    records = [{"index": i, "sig": sheep.xp.sig, "name": name or sheep.xp.sig,
+                "launched": sheep.xp.sig in existing}
+               for i, (sheep, name) in enumerate(zip(sheeps, names))]
+
+    if args.json:
+        emit([], as_json={"grid": args.grid, "experiments": records, "stale": stale})
+        return 0
+
+    limit = args.limit or MAX_ROWS
+    rows = [[str(r["index"]), r["sig"], "launched" if r["launched"] else "NEW",
+             elide_parts(r["name"], MAX_NAME_CHARS)] for r in records[:limit]]
+    lines = [f"{args.grid}: {len(sheeps)} xps"]
+    if base:
+        lines.append("base: " + elide_parts(base, 160))
+    lines += columns(rows, ["#", "sig", "status", "name"])
+    if len(records) > limit:
+        lines.append(f"... {len(records) - limit} more (--limit)")
+    new = sum(1 for r in records if not r["launched"])
+    lines.append(f"{len(records) - new} launched | {new} new")
+    if stale:
+        lines.append(f"WARNING: {len(stale)} experiment(s) in the grid folder are no "
+                     f"longer produced and would be CANCELLED by a real launch: "
+                     + " ".join(stale[:10]) + (" ..." if len(stale) > 10 else ""))
+    emit(lines)
+    return 0

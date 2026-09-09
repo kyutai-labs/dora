@@ -186,6 +186,14 @@ def get_parser():
     why.add_argument("--job", default=None, help="Look at this job id's logs.")
     why.set_defaults(action=_inspect.why_action)
 
+    plan = subparsers.add_parser(
+        "plan", help="Resolve a grid to its experiments without scheduling anything.")
+    plan.add_argument("grid", help="Grid name, as for `dora grid`.")
+    plan.add_argument("patterns", nargs="*", help="Only experiments matching these.")
+    plan.add_argument("--json", action="store_true")
+    plan.add_argument("--limit", type=int, default=None)
+    plan.set_defaults(action=_inspect.plan_action)
+
     return parser
 
 
