@@ -171,11 +171,9 @@ def test_read_only_shepherd_refuses_to_commit(tmpdir):
             shepherd.commit()
 
 
-def test_plan_reports_stale_experiments(tmpdir, capsys):
+def test_compact_grid_reports_stale_experiments(tmpdir, capsys):
     """Launching an edited grid cancels the experiments it no longer produces,
-    so `plan` has to say which those are before anyone launches."""
-    from ..inspect import plan_action
-
+    so the output has to say which those are before anyone launches."""
     with mock_shep():
         main = get_main(tmpdir)
         args = RunGridArgs(monitor=False, dry_run=False, silent=True)
@@ -185,27 +183,29 @@ def test_plan_reports_stale_experiments(tmpdir, capsys):
 
         # explore_2 produces a different XP, so everything explore_1 scheduled
         # is now stale.
-        import types
-        grid = types.SimpleNamespace(explorer=Explorer(explore_2))
-        import dora.grid as grid_module
-        original = grid_module._get_explore
-        grid_module._get_explore = lambda a, m: grid.explorer
-        try:
-            plan_action(_PlanArgs(grid="unittest_plan"), main)
-        finally:
-            grid_module._get_explore = original
+        args = RunGridArgs(monitor=False, dry_run=True, compact=True)
+        run_grid(main, Explorer(explore_2), "unittest_plan",
+                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
 
         out = capsys.readouterr().out
-        # The fake shepherd reports no live job, so these are finished
-        # experiments: dropped from the grid, not cancelled.
-        assert "would be dropped from the grid" in out
-        assert "would be CANCELLED" not in out
-        assert "1 new" in out
+        # `run_grid` decides by `Sheep.is_done()`, and these are not done, so
+        # they are the ones a real launch would actually cancel.
+        assert "would be CANCELLED" in out
+        assert "\x1b" not in out
 
 
-class _PlanArgs:
-    def __init__(self, grid):
-        self.grid = grid
-        self.patterns = []
-        self.json = False
-        self.limit = None
+def test_json_grid_output_is_parseable(tmpdir, capsys):
+    """--json has to put exactly one object on stdout, so the monitoring
+    chatter that normally precedes the table must be suppressed."""
+    import json as json_module
+
+    with mock_shep():
+        main = get_main(tmpdir)
+        args = RunGridArgs(monitor=False, dry_run=True, json=True)
+        run_grid(main, Explorer(explore_1), "unittest_json",
+                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        payload = json_module.loads(capsys.readouterr().out)
+        # explore_1's two calls differ only in an excluded parameter, so they
+        # share a signature and are one experiment.
+        assert len(payload["experiments"]) == 1
+        assert {"sig", "state", "metrics"} <= set(payload["experiments"][0])

@@ -11,10 +11,12 @@ Faster, quieter, and readable without importing your project.
 - `import dora` no longer pulls in torch, hydra, omegaconf, submitit, treetable
   or retrying: 1.93s down to 0.13s, and `dora --help` 2.14s down to 0.36s.
   `jsonable` no longer forces a torch import on every XP construction.
-- Added `dora status`, `dora metrics`, `dora log`, `dora why` and `dora plan`:
-  read-only commands with capped, uncoloured, `--json`-able output, for looking
-  at experiments without wading through treetables and multi-megabyte logs.
-  `dora plan` also warns which experiments a real launch would cancel.
+- Added `dora status`, `dora metrics`, `dora log` and `dora why`: read-only
+  commands with capped, uncoloured, `--json`-able output, for looking at
+  experiments without wading through treetables and multi-megabyte logs.
+- `dora grid` gained `--compact` and `--json`, for the dry run and for live
+  monitoring alike, and now names the experiments a launch would cancel or drop
+  because the grid no longer produces them.
 - Added an optional `dora.toml` for static project settings, so read-only
   commands need not import the training package. Supports `${env:VAR}`
   interpolation and `[[dora.dir_probe]]` for per-cluster experiment directories.

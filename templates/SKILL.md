@@ -65,16 +65,17 @@ while the experiment directory accumulates grids from every branch ever
 launched**, so a grid you can see in `dora status` may not exist on your branch.
 
 ```bash
-dora grid a.b --dry_run --no_monitoring   # resolve to signatures, change nothing
-dora grid a.b                             # actually launch
+dora grid a.b --dry_run --compact   # resolve to signatures, change nothing
+dora grid a.b                       # actually launch
 ```
 
 `--dry_run` writes nothing at all. `--dry_run --init` additionally registers the
 signatures so they can be referenced later, and nothing else.
 
 **Launching a grid cancels experiments it no longer produces.** Anything
-currently symlinked under the grid that the edited explorer stops emitting gets
-cancelled and unlinked. Check with `--dry_run` after editing a grid file.
+currently symlinked under the grid that the edited explorer stops emitting is
+cancelled if still running, and dropped from the grid if already finished.
+`--dry_run --compact` names both sets before you launch.
 
 ## Reading an experiment from Python
 

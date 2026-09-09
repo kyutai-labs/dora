@@ -108,6 +108,10 @@ def get_parser():
     group.add_argument("-t", "--tail", type=int,
                        help="Show the log for the job with the given index")
 
+    grid.add_argument("--compact", action='store_true',
+                      help="One capped, uncoloured line per XP instead of the treetable.")
+    grid.add_argument("--json", action='store_true',
+                      help="Emit one compact JSON object instead of the treetable.")
     grid.add_argument("--init", action='store_true',
                       help="Init the given XPs so that their signature can be referenced.")
 
@@ -176,14 +180,6 @@ def get_parser():
     why.add_argument("--attempts", type=int, default=3,
                      help="How many job attempts to look back through (default 3).")
     why.set_defaults(action=_inspect.why_action)
-
-    plan = subparsers.add_parser(
-        "plan", help="Resolve a grid to its experiments without scheduling anything.")
-    plan.add_argument("grid", help="Grid name, as for `dora grid`.")
-    plan.add_argument("patterns", nargs="*", help="Only experiments matching these.")
-    plan.add_argument("--json", action="store_true")
-    plan.add_argument("--limit", type=int, default=None)
-    plan.set_defaults(action=_inspect.plan_action)
 
     # Superseded, kept working for existing scripts. Listed last and marked as
     # such because each has a better answer above: `grid` instead of `launch`,

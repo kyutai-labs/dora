@@ -350,14 +350,19 @@ dora status <grid|sig|jobid>...          # one line per XP: state, epoch, last m
 dora metrics SIGNATURE [--every 20]      # downsampled history instead of the whole file
 dora log SIGNATURE [--tail 40] [--grep]  # log with ANSI stripped and huge lines cut
 dora why SIGNATURE                       # classify why a job died
-dora plan GRID                           # what a grid would schedule, compactly
 ```
 
-`dora plan` is the exception to "read-only and fast": it has to import your
-project and evaluate the grid file, because there is no way to know what an
-explorer produces without running it. It schedules nothing, and unlike
-`dora grid --dry_run` it names the experiments the grid has *stopped* producing,
-which a real launch would silently cancel.
+`dora grid` takes the same treatment through `--compact` and `--json`, for the
+dry run and for live monitoring alike:
+
+```bash
+dora grid GRID --dry_run --compact   # what it would schedule, in a tenth the output
+dora grid GRID --json                # live grid state, machine readable
+```
+
+The compact rendering also names the experiments the grid has *stopped*
+producing, separating the running ones a launch would cancel from the finished
+ones it would merely drop from the grid.
 
 They are read-only and never schedule or cancel anything. Common flags:
 `--json` for one compact machine-readable object, `--limit` to raise or lower the

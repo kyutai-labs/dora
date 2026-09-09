@@ -96,8 +96,11 @@ def elide_parts(name: str, width: int) -> str:
         kept.append(part)
         used += len(part) + 1
     dropped = len(parts) - len(kept)
-    if not kept:
-        return elide(parts[0], width)
+    if len(kept) == 1 and len(kept[0]) > width:
+        # A single part longer than the whole budget: nothing to drop, so fall
+        # back to cutting through it rather than blowing the column open.
+        head = elide(kept[0], width - (len(f" +{dropped}") if dropped else 0))
+        return head + (f" +{dropped}" if dropped else "")
     return " ".join(kept) + (f" +{dropped}" if dropped else "")
 
 
@@ -804,79 +807,72 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     return 0
 
 
-def plan_action(args: tp.Any, main: tp.Any) -> int:
-    """Resolve a grid to the experiments it would schedule, without scheduling.
+def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str],
+                base_name: str, lines: tp.Sequence[dict],
+                stale: tp.Sequence[tp.Any] = ()) -> None:
+    """Compact rendering of a grid, for `dora grid --compact` / `--json`.
 
-    Unlike the read-only commands this has to import the project and evaluate
-    the grid file -- there is no way to know what an explorer produces without
-    running it -- so it is as slow as the project's import. What it avoids is
-    the twenty kilobytes of table that `dora grid --dry_run` prints to say the
-    same thing, and it names the experiments the grid has stopped producing,
-    which a real launch would silently cancel.
+    The treetable this replaces is built for a human watching a terminal: it is
+    coloured, it wraps, and on a twenty-experiment grid it runs to 26KB. This
+    says the same thing in a tenth of that, and stays readable when something
+    else has to parse it.
     """
-    from .conf import SubmitRules
-    from .grid import RunGridArgs, _get_explore, run_grid
+    records = []
+    for index, (sheep, name, line) in enumerate(zip(herd, names, lines)):
+        meta = line.get("Meta", {})
+        metrics: tp.Dict[str, tp.Any] = {}
+        for group, values in line.items():
+            if group == "Meta" or not isinstance(values, dict):
+                continue
+            for key, value in values.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    metrics[f"{group}.{key}" if group else key] = value
+        records.append({
+            "index": index,
+            "sig": sheep.xp.sig,
+            "name": name or sheep.xp.sig,
+            "state": meta.get("state", "N/A"),
+            "job": meta.get("sid", "") or "",
+            "metrics": metrics,
+        })
 
-    explorer = _get_explore(args, main)
-    grid_args = RunGridArgs(monitor=False, silent=True, dry_run=True,
-                            patterns=list(args.patterns or []))
-    sheeps = run_grid(main, explorer, args.grid, rules=SubmitRules(),
-                      slurm=main.get_slurm_config(), args=grid_args)
+    # A stale experiment that is still running gets cancelled; one that already
+    # finished is only dropped from the grid and keeps its results. Conflating
+    # the two would make a harmless edit look alarming.
+    live_stale, done_stale = [], []
+    for sheep in stale:
+        (done_stale if sheep.is_done() else live_stale).append(sheep.xp.sig)
 
-    dora = main.dora
-    grid_folder = dora.dir / dora._grids / args.grid
-    produced = {sheep.xp.sig for sheep in sheeps}
-    existing = ({c.name for c in grid_folder.iterdir()}
-                if grid_folder.is_dir() else set())
-    stale = sorted(existing - produced)
+    if getattr(args, "json", False):
+        emit([], as_json={"experiments": records, "base_name": base_name,
+                          "would_cancel": live_stale, "would_drop": done_stale})
+        return
 
-    # A stale experiment meets one of two fates, and the difference matters a
-    # lot to whoever is about to launch: one that is still running gets
-    # cancelled, while one that already finished is merely unlinked from the
-    # grid and keeps its results.
-    stale_jobs = {}
-    for sig in stale:
-        job = read_json(dora.dir / dora.xps / sig / "job.json") or {}
-        stale_jobs[sig] = job.get("job_id", "")
-    stale_states = job_states(list(stale_jobs.values()))
-    live = [sig for sig in stale
-            if stale_states.get(stale_jobs[sig], "") in ("RUNNING", "PENDING",
-                                                         "REQUEUED", "SUSPENDED")]
-    finished = [sig for sig in stale if sig not in live]
+    limit = getattr(args, "limit", None) or MAX_ROWS
+    shown = records[:limit]
+    metric_keys = choose_metric_keys([r["metrics"] for r in shown], 4)
+    rows = [[str(r["index"]), r["sig"], elide_parts(r["name"], MAX_NAME_CHARS),
+             r["state"], r["job"] or "-"]
+            + [fmt(r["metrics"].get(k, "-")) for k in metric_keys]
+            for r in shown]
 
-    try:
-        names, base = main.get_names([sheep.xp for sheep in sheeps])
-    except Exception:
-        names, base = [sheep.xp.sig for sheep in sheeps], ""
-
-    records = [{"index": i, "sig": sheep.xp.sig, "name": name or sheep.xp.sig,
-                "launched": sheep.xp.sig in existing}
-               for i, (sheep, name) in enumerate(zip(sheeps, names))]
-
-    if args.json:
-        emit([], as_json={"grid": args.grid, "experiments": records,
-                          "stale": stale, "would_cancel": live,
-                          "would_unlink": finished})
-        return 0
-
-    limit = args.limit or MAX_ROWS
-    rows = [[str(r["index"]), r["sig"], "launched" if r["launched"] else "NEW",
-             elide_parts(r["name"], MAX_NAME_CHARS)] for r in records[:limit]]
-    lines = [f"{args.grid}: {len(sheeps)} xps"]
-    if base:
-        lines.append("base: " + elide_parts(base, 160))
-    lines += columns(rows, ["#", "sig", "status", "name"])
-    if len(records) > limit:
-        lines.append(f"... {len(records) - limit} more (--limit)")
-    new = sum(1 for r in records if not r["launched"])
-    lines.append(f"{len(records) - new} launched | {new} new")
-    if live:
-        lines.append(f"WARNING: {len(live)} running experiment(s) would be CANCELLED "
-                     "by a real launch, the grid no longer produces them: "
-                     + " ".join(live[:10]) + (" ..." if len(live) > 10 else ""))
-    if finished:
-        lines.append(f"{len(finished)} finished experiment(s) would be dropped from the "
-                     "grid (results kept): "
-                     + " ".join(finished[:10]) + (" ..." if len(finished) > 10 else ""))
-    emit(lines)
-    return 0
+    out = []
+    if base_name:
+        out.append("base: " + elide_parts(base_name, 160))
+    out += columns(rows, ["#", "sig", "name", "state", "job"] + metric_keys)
+    if len(records) > len(shown):
+        out.append(f"... {len(records) - len(shown)} more (--limit)")
+    tally: tp.Dict[str, int] = {}
+    for record in records:
+        tally[record["state"]] = tally.get(record["state"], 0) + 1
+    out.append(" | ".join(f"{state.lower()} {count}"
+                          for state, count in sorted(tally.items())))
+    if live_stale:
+        out.append(f"WARNING: {len(live_stale)} running experiment(s) would be CANCELLED, "
+                   "the grid no longer produces them: " + " ".join(live_stale[:10])
+                   + (" ..." if len(live_stale) > 10 else ""))
+    if done_stale:
+        out.append(f"{len(done_stale)} finished experiment(s) would be dropped from the "
+                   "grid (results kept): " + " ".join(done_stale[:10])
+                   + (" ..." if len(done_stale) > 10 else ""))
+    emit(out)

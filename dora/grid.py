@@ -78,6 +78,12 @@ class RunGridArgs:
 
     jupyter: bool = False  # Are we in a jupyter notebook (will erase cell output content first.)
 
+    # Output format. The default treetable is built for a human watching a
+    # terminal; these produce something a script -- or a person who only wanted
+    # one number -- can actually read.
+    compact: bool = False
+    json: bool = False
+
     # Other flags, supported only from the command line.
     folder: tp.Optional[int] = None
     log: tp.Optional[int] = None
@@ -316,7 +322,9 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         return sheeps
 
     maybe_print: tp.Callable
-    if args.silent:
+    # --json must put a single parseable object on stdout, so the usual chatter
+    # is suppressed for it exactly as for --silent.
+    if args.silent or getattr(args, "json", False):
         maybe_print = no_print
     else:
         maybe_print = print
@@ -326,7 +334,7 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
             from IPython import display
             display.clear_output(wait=True)
         shepherd.update()
-        if monitor(args, main, explorer, sheeps, maybe_print):
+        if monitor(args, main, explorer, sheeps, maybe_print, stale=old_sheeps):
             # All jobs finished or failed, stop monitoring
             break
         if not args.monitor:
@@ -381,9 +389,15 @@ def _filter_grid_sheeps(patterns: tp.List[str], main: DecoratedMain,
 
 
 def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List[Sheep],
-            maybe_print: tp.Callable) -> bool:
+            maybe_print: tp.Callable, stale: tp.Sequence[Sheep] = ()) -> bool:
     """Single iteration of monitoring of the jobs in a Grid.
     Returns `True` if all jobs are done or failed, and `False` otherwise.
+
+    With `args.compact` or `args.json`, prints a capped, uncoloured rendering
+    instead of the treetable -- see `dora.inspect`. `stale` are experiments
+    still linked into the grid that the explorer no longer produces; a real run
+    cancels the running ones and drops the rest, which is worth saying out loud
+    before it happens.
     """
     names, base_name = main.get_names([sheep.xp for sheep in herd])
     histories = [main.get_xp_history(sheep.xp) for sheep in herd]
@@ -422,6 +436,11 @@ def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List
             other = explorer.process_history(history)
         line.update(other)
         lines.append(line)
+
+    if getattr(args, "compact", False) or getattr(args, "json", False):
+        from .inspect import render_grid
+        render_grid(args, herd, names, base_name, lines, stale)
+        return finished
 
     import treetable as tt
     if base_name:
