@@ -167,14 +167,7 @@ def load(start: tp.Optional[Path] = None) -> tp.Optional[ProjectConfig]:
     path = find_toml(start)
     if path is None:
         return None
-    try:
-        import tomllib
-    except ImportError:  # Python < 3.11
-        try:
-            import tomli as tomllib  # type: ignore
-        except ImportError:
-            raise ProjectConfigError(
-                f"Found {path} but no TOML parser; install `tomli` or use Python 3.11+.")
+    import tomllib
     with open(path, "rb") as fileobj:
         raw = tomllib.load(fileobj)
     return ProjectConfig(path, raw)

@@ -33,6 +33,8 @@ Faster, quieter, and readable without importing your project.
   (451ms to 153ms, at import time on every invocation).
 - Added `dora.tests.golden`, a signature regression harness.
 - Added `templates/SKILL.md`, a Claude Code skill for driving Dora.
+- Minimum supported Python is now 3.11, so `dora.toml` parsing uses the stdlib
+  `tomllib` with no third-party fallback.
 
 ## [0.1.13] - 2026-09-09
 
