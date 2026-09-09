@@ -45,11 +45,13 @@ def add_slurm_config(parser):
 # it already lists what each one does, this is only for the choice that is easy
 # to get wrong.
 _EPILOG = """\
-Prefer `grid` over `launch`, even for a single job. A grid file is a record of
-what you ran: it lives in version control, it deduplicates experiments by
+Use `grid` for anything you schedule, even a single job: a grid file is a record
+of what you ran, it lives in version control, it deduplicates experiments by
 signature, and re-running it monitors or resumes what is already scheduled.
-`launch` keeps none of that book keeping and cannot tune the Slurm config
-beyond a few flags. Use `run` for local debugging.
+`launch` keeps none of that book keeping. Use `run` for local debugging.
+
+Deprecated commands still work; they are listed last because something above
+answers the same question better.
 
 Use `dora <command> --help` for the flags of any command.
 """
@@ -131,45 +133,6 @@ def get_parser():
     run.add_argument("argv", nargs='*')
     run.set_defaults(action=run_action)
 
-    launch = subparsers.add_parser(
-        "launch", help="Schedule a single job on Slurm. Prefer `grid`, see below.")
-    launch.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
-    launch.add_argument("-a", "--attach", action="store_true",
-                        help="Attach to the remote process. Interrupting the command will "
-                             "kill the remote job.")
-    launch.add_argument("--no_tail", action="store_false", dest="tail", default=True,
-                        help="Does not tail the log once job is started.")
-    launch.add_argument("-C", "--cancel", action='store_true',
-                        help="Cancel any existing job and return.")
-    launch.add_argument("--clear", action='store_true',
-                        help="Remove XP folder, reschedule job, starting from scratch.")
-    add_submit_rules(launch)
-    add_slurm_config(launch)
-    launch.add_argument("argv", nargs='*')
-    launch.set_defaults(action=launch_action)
-
-    info = subparsers.add_parser(
-        "info", help="Everything known about one experiment. Verbose; "
-                     "`status`, `log` and `why` answer narrower questions.")
-    info.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
-    info.add_argument("-j", "--job_id", help="Find job by job id.")
-    info.add_argument("-C", "--cancel", action="store_true", help="Cancel job")
-    info.add_argument("-l", "--log", action="store_true", help="Show entire log")
-    info.add_argument("-t", "--tail", action="store_true", help="Tail log")
-    info.add_argument("-m", "--metrics", action="store_true", help="Show last metrics")
-    info.add_argument("argv", nargs='*')
-    info.set_defaults(action=info_action)
-
-    import_ = subparsers.add_parser(
-        "import", help="Read an exported blob on stdin and register those "
-                       "experiments locally, so their signatures resolve.")
-    import_.set_defaults(action=import_action)
-
-    export = subparsers.add_parser(
-        "export", help="Print a shareable blob describing the given experiments.")
-    export.add_argument("sigs", nargs='*', help='All the XP sigs to export.')
-    export.set_defaults(action=export_action)
-
     # Read-only inspection. These never import the training package when a
     # dora.toml supplies the experiment directory, and their output is capped
     # and uncoloured so it is cheap to read programmatically.
@@ -219,6 +182,52 @@ def get_parser():
     plan.add_argument("--json", action="store_true")
     plan.add_argument("--limit", type=int, default=None)
     plan.set_defaults(action=_inspect.plan_action)
+
+    # Superseded, kept working for existing scripts. Listed last and marked as
+    # such because each has a better answer above: `grid` instead of `launch`,
+    # and `status`/`metrics`/`log`/`why` instead of `info`.
+    launch = subparsers.add_parser(
+        "launch",
+        help="(deprecated) Schedule a single job on Slurm. Use `grid` instead.")
+    launch.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
+    launch.add_argument("-a", "--attach", action="store_true",
+                        help="Attach to the remote process. Interrupting the command will "
+                             "kill the remote job.")
+    launch.add_argument("--no_tail", action="store_false", dest="tail", default=True,
+                        help="Does not tail the log once job is started.")
+    launch.add_argument("-C", "--cancel", action='store_true',
+                        help="Cancel any existing job and return.")
+    launch.add_argument("--clear", action='store_true',
+                        help="Remove XP folder, reschedule job, starting from scratch.")
+    add_submit_rules(launch)
+    add_slurm_config(launch)
+    launch.add_argument("argv", nargs='*')
+    launch.set_defaults(action=launch_action)
+
+    info = subparsers.add_parser(
+        "info",
+        help="(deprecated) Everything known about one experiment, verbosely. "
+             "Use `status`, `metrics`, `log` or `why`.")
+    info.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
+    info.add_argument("-j", "--job_id", help="Find job by job id.")
+    info.add_argument("-C", "--cancel", action="store_true", help="Cancel job")
+    info.add_argument("-l", "--log", action="store_true", help="Show entire log")
+    info.add_argument("-t", "--tail", action="store_true", help="Tail log")
+    info.add_argument("-m", "--metrics", action="store_true", help="Show last metrics")
+    info.add_argument("argv", nargs='*')
+    info.set_defaults(action=info_action)
+
+    import_ = subparsers.add_parser(
+        "import",
+        help="(deprecated) Read an exported blob on stdin and register "
+             "those experiments locally, so their signatures resolve.")
+    import_.set_defaults(action=import_action)
+
+    export = subparsers.add_parser(
+        "export",
+        help="(deprecated) Print a shareable blob describing the given experiments.")
+    export.add_argument("sigs", nargs='*', help='All the XP sigs to export.')
+    export.set_defaults(action=export_action)
 
     return parser
 
