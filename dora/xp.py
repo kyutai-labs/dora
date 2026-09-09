@@ -92,6 +92,23 @@ class XP:
         return self.folder / ".argv.json"
 
     @property
+    def _delta_cache(self) -> Path:
+        """Where the delta is persisted, alongside the argv cache.
+
+        The delta is what the signature is computed from, and it cannot be
+        recovered from a stored config alone: it is a diff against a base config
+        that is not saved anywhere, and it collapses `+a.b.c=...` additions into
+        whole subtrees. Writing it down when the XP is created is the only way to
+        recover an experiment's name once its config files have moved on.
+        """
+        return self.folder / ".delta.json"
+
+    @property
+    def _hydra_config(self) -> Path:
+        """The composed config Hydra saved for the run that actually happened."""
+        return self.folder / ".hydra" / "config.yaml"
+
+    @property
     def _shared_folder(self) -> tp.Optional[Path]:
         if self.dora.shared is not None:
             return self.dora.shared / self.dora.xps / self.sig

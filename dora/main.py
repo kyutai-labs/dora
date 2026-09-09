@@ -116,6 +116,11 @@ class DecoratedMain(NamesMixin):
         """
         xp.folder.mkdir(exist_ok=True, parents=True)
         json.dump(xp.argv, open(xp._argv_cache, 'w'))
+        if xp.delta is not None:
+            # Persisted here because this is the only moment it is known for
+            # certain. Recomputing it later needs the config tree exactly as it
+            # was, and config trees move on. See `XP._delta_cache`.
+            json.dump(xp.delta, open(xp._delta_cache, 'w'))
         if xp._shared_argv_cache is not None:
             # Create xps and XP folders with 0777 mode.
             xp._shared_argv_cache.parent.parent.mkdir(exist_ok=True, parents=True, mode=0o777)
@@ -147,8 +152,49 @@ class DecoratedMain(NamesMixin):
     def get_xp_from_sig(self, sig: str) -> XP:
         """Returns the XP from the signature. Can only work if such an XP
         has previously ran.
+
+        This recomposes the config from the project's *current* config files. It
+        is accurate only as long as those have not changed; see
+        `get_existing_xp_from_sig` for a reader that trusts what the experiment
+        stored instead.
         """
         return self.get_xp(self.get_argv_from_sig(sig))
+
+    def get_existing_xp_from_sig(self, sig: str) -> XP:
+        """Load an experiment that has already run, from what it wrote to disk.
+
+        `get_xp_from_sig` replays a signature's argv through the config system,
+        which is both slow and a lie: it describes what those arguments would
+        mean *today*. Experiments outlive their config files. A solver gets
+        renamed, a group is deleted, an override stops being valid -- and the
+        experiment becomes unreadable even though its results are sitting right
+        there. On a real 1031-experiment directory, a third could no longer be
+        loaded at all, and fifteen more resolved to a different signature than
+        the folder they live in.
+
+        This reads the argv cache, the persisted delta, and (for config-file
+        based mains) the config the run actually used. The signature is taken as
+        given rather than recomputed, since the folder name is the ground truth.
+
+        Missing pieces are left as None rather than guessed at: `delta` is None
+        for experiments created before it was persisted, which costs their name
+        but nothing else.
+        """
+        argv = list(self.get_argv_from_sig(sig))
+        xp = XP(dora=self.dora, cfg=None, argv=argv, sig=sig)
+        if xp._delta_cache.exists():
+            # Left as the JSON gives it: `XP.__init__` runs the delta through
+            # `jsonable`, which turns the pairs into lists, so loading them back
+            # as tuples would not round-trip. Both serialize identically, so the
+            # signature is unaffected either way.
+            xp.delta = json.load(open(xp._delta_cache))
+        xp.cfg = self._load_existing_cfg(xp)
+        return xp
+
+    def _load_existing_cfg(self, xp: XP) -> tp.Any:
+        """Load the config an experiment actually ran with, or None if the main
+        does not store one."""
+        return None
 
     def __repr__(self):
         return f"DecoratedMain({self.main})"
@@ -226,8 +272,11 @@ class ArgparseMain(DecoratedMain):
         return argv
 
     def get_name_parts(self, xp: XP) -> OrderedDict:
-        parts = OrderedDict()
-        assert xp.delta is not None
+        parts: OrderedDict = OrderedDict()
+        if xp.delta is None:
+            # Loaded from disk without a persisted delta; `get_names` falls back
+            # to the signature for these.
+            return parts
         for name, value in xp.delta:
             parts[name] = value
         return parts

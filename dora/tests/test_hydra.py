@@ -148,3 +148,47 @@ def test_config_groups_unaffected_by_no_copy(tmpdir):
     _main.__module__ = __name__
     main = get_main(tmpdir)
     assert main._get_config_groups(fast=True) == main._get_config_groups(fast=False)
+
+
+def test_get_existing_xp_reads_what_the_run_stored(tmpdir):
+    """The stored config wins over recomposition.
+
+    An experiment outlives its config files, so reading back what it actually
+    ran with has to be possible even once the tree has moved on.
+    """
+    import yaml
+
+    _main.__module__ = __name__
+    main = get_main(tmpdir)
+    argv = ['optim.loss=stored']
+    xp = main.get_xp(argv)
+    main.init_xp(xp)
+
+    # Stand in for a config tree that has since changed: a value no current
+    # composition could produce.
+    xp._hydra_config.parent.mkdir(parents=True, exist_ok=True)
+    stored = {'optim': {'loss': 'stored', 'lr': 0.123}, 'gone': 'only-on-disk'}
+    xp._hydra_config.write_text(yaml.safe_dump(stored))
+
+    loaded = main.get_existing_xp_from_sig(xp.sig)
+    assert loaded.sig == xp.sig
+    assert loaded.argv == list(argv)
+    assert loaded.cfg.gone == 'only-on-disk'
+    assert loaded.cfg.optim.lr == 0.123
+    # init_xp persisted the delta, so the name survives without recomposing.
+    assert loaded.delta == xp.delta
+    assert main.get_name(loaded) == main.get_name(xp)
+
+
+def test_get_existing_xp_without_delta_falls_back_to_sig(tmpdir):
+    """Experiments created before the delta was persisted keep working; they
+    just lose their name, which is not worth recomposing a config tree for."""
+    _main.__module__ = __name__
+    main = get_main(tmpdir)
+    xp = main.get_xp(['optim.loss=nodelta'])
+    main.init_xp(xp)
+    xp._delta_cache.unlink()
+
+    loaded = main.get_existing_xp_from_sig(xp.sig)
+    assert loaded.delta is None
+    assert main.get_name(loaded) == xp.sig

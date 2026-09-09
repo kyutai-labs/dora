@@ -133,9 +133,9 @@ def test_dry_run_writes_nothing(tmpdir):
         assert snapshot(root) == before, "dry run touched the Dora directory"
 
 
-def test_dry_run_with_init_writes_only_argv_caches(tmpdir):
+def test_dry_run_with_init_writes_only_xp_caches(tmpdir):
     """`--dry_run --init` is the documented way to register signatures without
-    scheduling, so it must still write the argv caches -- and nothing else."""
+    scheduling, so it must still write the per-XP caches -- and nothing else."""
     with mock_shep():
         main = get_main(tmpdir)
         root = main.dora.dir
@@ -146,7 +146,9 @@ def test_dry_run_with_init_writes_only_argv_caches(tmpdir):
                           slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
 
         written = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
-        expected = sorted(f"{main.dora.xps}/{s.xp.sig}/.argv.json" for s in sheeps)
+        expected = sorted(
+            f"{main.dora.xps}/{sheep.xp.sig}/{name}"
+            for sheep in sheeps for name in (".argv.json", ".delta.json"))
         assert written == expected
         # In particular, no grid folder and no Shepherd bookkeeping.
         assert not (root / main.dora._grids / "unittest_dry_init").exists()
