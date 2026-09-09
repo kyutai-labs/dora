@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+Faster, quieter, and readable without importing your project.
+
+- `import dora` no longer pulls in torch, hydra, omegaconf, submitit, treetable
+  or retrying: 1.93s down to 0.13s, and `dora --help` 2.14s down to 0.36s.
+  `jsonable` no longer forces a torch import on every XP construction.
+- Added `dora status`, `dora metrics`, `dora log` and `dora why`: read-only
+  commands with capped, uncoloured, `--json`-able output, for looking at
+  experiments without wading through treetables and multi-megabyte logs.
+- Added an optional `dora.toml` for static project settings, so read-only
+  commands need not import the training package. Supports `${env:VAR}`
+  interpolation and `[[dora.dir_probe]]` for per-cluster experiment directories.
+  Also fixes `dora` only working from the repository root.
+- Added `main.get_existing_xp_from_sig()`, which reads what an experiment stored
+  rather than recomposing its config. Faster, and it still works once the config
+  files have moved on -- on one real project it recovered 301 experiments that
+  could no longer be loaded at all. `init_xp` now persists the delta to make
+  this possible.
+- `--dry_run` no longer writes to the Dora directory. `Shepherd` gained a
+  `read_only` mode which skips the orphan check, so reading job state can no
+  longer cancel a job.
+- `hydra.main` no longer leaves `GlobalHydra` initialized, so several XPs can
+  run in one process.
+- Sped up config group listing by suppressing Hydra's internal deepcopies
+  (451ms to 153ms, at import time on every invocation).
+- Added `dora.tests.golden`, a signature regression harness.
+- Added `templates/SKILL.md`, a Claude Code skill for driving Dora.
+
+
 ## [0.1.13] - TBD
 
 Adding dependent jobs. E.g., use `launcher.slurm_(dependents=5`). Incompatible with

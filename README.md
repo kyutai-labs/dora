@@ -23,9 +23,11 @@ width="1000px"></p>
 - [`dora run`: Running XP locally](#dora-run-running-xp-locally)
 - [`dora launch`: Launching XP remotely](#dora-launch-launching-xp-remotely)
 - [`dora info`: Inspecting an XP](#dora-info-inspecting-an-xp)
+- [Reading XPs cheaply: `status`, `metrics`, `log`, `why`](#reading-xps-cheaply-status-metrics-log-why)
 - [`dora grid`: Managing a grid search](#dora-grid-managing-a-grid-search)
 - [The Dora API](#the-dora-api)
 - [Sharing XPs](#sharing-xps)
+- [`dora.toml`: static project settings](#doratoml-static-project-settings)
 - [Advanced configuration](#advanced-configuration)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -334,6 +336,36 @@ The info command supports a number of flags:
 - `-t`: tail the log for the main task.
 
 
+## Reading XPs cheaply: `status`, `metrics`, `log`, `why`
+
+`dora info` and `dora grid` are built for a human watching a terminal: they print
+an XP's whole argv, and a colourised, line-wrapped table. That is expensive to
+read when you only wanted one number, and outright hostile to anything consuming
+it programmatically (a script, a notebook, an LLM agent).
+
+These four commands answer narrower questions, with capped and uncoloured output:
+
+```bash
+dora status <grid|sig|jobid>...          # one line per XP: state, epoch, last metrics
+dora metrics SIGNATURE [--every 20]      # downsampled history instead of the whole file
+dora log SIGNATURE [--tail 40] [--grep]  # log with ANSI stripped and huge lines cut
+dora why SIGNATURE                       # classify why a job died
+```
+
+They are read-only and never schedule or cancel anything. Common flags:
+`--json` for one compact machine-readable object, `--limit` to raise or lower the
+row cap, `--keys a,b` to choose metric columns. Targets may be signatures, grid
+names, Slurm job ids, or `@sig` to force signature interpretation.
+
+`dora why` recognises out-of-memory, NCCL timeouts, Hydra config errors and Slurm
+step failures, deduplicates across ranks, and falls back to the tail of the newest
+log. For scale, on a 20-XP grid: `dora status` prints ~2.8KB in half a second,
+where `dora grid --dry_run --no_monitoring` prints 26KB in twenty.
+
+With a [`dora.toml`](#doratoml-static-project-settings) these commands do not
+import your training package at all, which on a typical project saves ten seconds
+of importing torch to answer a question that is a few file reads.
+
 ## `dora grid`: Managing a grid search
 
 The main benefit from Dora is the ability to handle arbitarily complex grid searches.
@@ -615,6 +647,57 @@ dora:
 ```
 Then other teammates can reference any SIG from an XP launched by other team members within the Dora commands.
 
+
+## `dora.toml`: static project settings
+
+Dora normally discovers a project by importing its training module. For read-only
+commands that is a steep price -- importing a research codebase pulls in torch and
+takes seconds to answer a question that is a few file reads.
+
+An optional `dora.toml` at the repository root states the static parts once:
+
+```toml
+[project]
+package     = "mypackage"
+main_module = "train"
+config_path = "config"     # Hydra projects
+config_name = "config"
+hydra       = { version_base = "1.1" }
+
+[dora]
+dir      = "${env:MY_XP_ROOT}"
+exclude  = ["device", "wandb.*"]
+git_save = true
+```
+
+It is found by walking up from the working directory, so `dora` works from
+anywhere in the repository rather than only from its root. Precedence is
+command-line flags, then environment variables, then `dora.toml`, then scanning
+for a package. Without the file everything behaves as before, just slower.
+
+Values may interpolate the environment as `${env:VAR}`, with an optional fallback
+as `${env:VAR:-/some/default}`. If your experiment directory depends on which
+cluster you are on, say so with probes -- the first marker path that exists wins:
+
+```toml
+[[dora.dir_probe]]
+probe = "/lustre/somecluster"
+dir   = "/lustre/somecluster/xps/${env:USER}"
+
+[[dora.dir_probe]]
+probe = "/data/othercluster"
+dir   = "/data/${env:USER}/xps"
+```
+
+Note that in TOML every key after an array-of-tables belongs to it, so keep
+`[[dora.dir_probe]]` entries at the end of the `[dora]` section.
+
+If nothing resolves the directory, Dora falls back to importing the project
+rather than guessing: pointing at the wrong experiment directory would silently
+look like an empty one.
+
+`templates/SKILL.md` in this repository is a ready-made Claude Code skill
+describing all of the above; copy it into your project's `.claude/skills/`.
 
 ## Advanced configuration
 
