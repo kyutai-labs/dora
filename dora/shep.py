@@ -241,12 +241,19 @@ class Shepherd:
         main (DecoratedMain): main function decorated by Dora.
         log (callable): log function, if provided should take a single string
             argument.
+        read_only (bool): if True, constructing the Shepherd has no side effects:
+            no bookkeeping folders are created and the orphan check -- which can
+            cancel Slurm jobs -- is skipped. Use this whenever you only intend to
+            look at job state. Submitting from a read-only Shepherd is refused.
     """
-    def __init__(self, main: DecoratedMain, log: tp.Callable[[str], None] = no_log):
+    def __init__(self, main: DecoratedMain, log: tp.Callable[[str], None] = no_log,
+                 read_only: bool = False):
         self.main = main
-        self._by_id.mkdir(exist_ok=True, parents=True)
-        self._orphans.mkdir(exist_ok=True, parents=True)
-        self._arrays.mkdir(exist_ok=True, parents=True)
+        self.read_only = read_only
+        if not read_only:
+            self._by_id.mkdir(exist_ok=True, parents=True)
+            self._orphans.mkdir(exist_ok=True, parents=True)
+            self._arrays.mkdir(exist_ok=True, parents=True)
         self.log = log
 
         self._in_job_array: bool = False
@@ -254,7 +261,10 @@ class Shepherd:
         self._to_cancel: tp.List[submitit.SlurmJob] = []
         self._to_submit: tp.List[_JobArray] = []
 
-        self._check_orphans()
+        if not read_only:
+            # Cancels jobs left behind by a Dora that crashed mid-submit, so it
+            # must never run for a caller that is only reading.
+            self._check_orphans()
 
     def get_sheep_from_argv(self, argv: tp.Sequence[str]) -> Sheep:
         """
@@ -354,6 +364,10 @@ class Shepherd:
         Commit all changes registered so far with either `maybe_submit_lazy()`
         and `cancel_lazy()`.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "This Shepherd was created with read_only=True and cannot submit "
+                "or cancel jobs.")
         if self._to_cancel:
             self._cancel(self._to_cancel)
             self._to_cancel = []

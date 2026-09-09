@@ -162,10 +162,16 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         slurm = main.get_slurm_config()
 
     grid_folder = main.dora.dir / main.dora._grids / grid_name
-    grid_folder.mkdir(exist_ok=True, parents=True)
+    if not args.dry_run:
+        # Creating this eagerly meant a dry run left an empty grid folder behind,
+        # which then shows up in listings as a grid that was never launched.
+        grid_folder.mkdir(exist_ok=True, parents=True)
 
     herd = Herd()
-    shepherd = Shepherd(main, log=log)
+    # Under --dry_run nothing is ever committed, so the Shepherd has no business
+    # creating its bookkeeping folders or running the orphan check (which cancels
+    # Slurm jobs).
+    shepherd = Shepherd(main, log=log, read_only=args.dry_run)
     if main._slow:
         with ProcessPoolExecutor(4) as pool:
             launcher = Launcher(shepherd, slurm, herd, pool=pool)
@@ -201,7 +207,7 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
 
     to_unlink = []
     old_sheeps = []
-    for child in grid_folder.iterdir():
+    for child in (grid_folder.iterdir() if grid_folder.exists() else []):
         if child.name not in herd.sheeps:
             to_unlink.append(child)
             try:
@@ -267,6 +273,10 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         for child in to_unlink:
             child.unlink()
     if args.init:
+        # Deliberately honoured under --dry_run too: `--dry_run --init` is the
+        # documented way to register signatures so they can be referenced (e.g.
+        # `dora run -f <sig>`) without scheduling anything. It writes the argv
+        # caches and nothing else.
         for sheep in sheeps:
             main.init_xp(sheep.xp)
 

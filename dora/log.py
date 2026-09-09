@@ -11,7 +11,6 @@ import time
 import typing as tp
 
 
-
 class LogProgress:
     """
     Sort of like tqdm but using log lines and not as real time.
