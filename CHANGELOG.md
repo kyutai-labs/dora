@@ -20,7 +20,9 @@ Faster, quieter, and readable without importing your project.
 - Added an optional `dora.toml` for static project settings, so read-only
   commands need not import the training package. Supports `${env:VAR}`
   interpolation and `[[dora.dir_probe]]` for per-cluster experiment directories.
-  Also fixes `dora` only working from the repository root.
+  Also fixes `dora` only working from the repository root. For Hydra projects
+  it replaces the `dora:` block of the composed config, which can then be
+  deleted; the YAML block still takes precedence where both say something.
 - Added `main.get_existing_xp_from_sig()`, which reads what an experiment stored
   rather than recomposing its config. Faster, and it still works once the config
   files have moved on -- on one real project it recovered 301 experiments that

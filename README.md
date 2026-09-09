@@ -682,6 +682,12 @@ exclude  = ["device", "wandb.*"]
 git_save = true
 ```
 
+For Hydra projects it also replaces the `dora:` block in the composed config:
+`HydraMain` reads `dora.toml` first and the YAML block on top, so the block can
+be deleted once the settings live here. Keeping both is how the two drift apart,
+and since `exclude` decides signatures, drift there silently re-signs every
+experiment.
+
 It is found by walking up from the working directory, so `dora` works from
 anywhere in the repository rather than only from its root. Precedence is
 command-line flags, then environment variables, then `dora.toml`, then scanning

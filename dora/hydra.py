@@ -164,7 +164,24 @@ class HydraMain(DecoratedMain):
         main.__module__ = "__main__"
 
     def _get_dora(self) -> DoraConfig:
-        dora = DoraConfig()
+        """Dora's own settings: from `dora.toml` if there is one, then from the
+        `dora:` block of the composed config.
+
+        The YAML block still wins where both say something, so nothing changes
+        for a project without a `dora.toml`. With one, the block can go away
+        entirely -- which is the point, since restating the settings in two
+        places is how they drift.
+        """
+        from . import project
+        conf = project.load()
+        dora = None
+        if conf is not None:
+            # require_dir=False: `dir` may legitimately come from the YAML below
+            # or be set by the project after import, but `exclude` decides
+            # signatures and must not be silently dropped.
+            dora = conf.dora_config(require_dir=False)
+        if dora is None:
+            dora = DoraConfig()
         if hasattr(self._base_cfg, "dora"):
             update_from_hydra(dora, self._base_cfg.dora)
         dora.exclude += ["dora.*", "slurm.*"]

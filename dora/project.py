@@ -111,12 +111,15 @@ class ProjectConfig:
         self.hydra_kwargs: dict = project.get("hydra", {})
         self._dora: dict = raw.get("dora", {})
 
-    def dora_config(self) -> tp.Optional[DoraConfig]:
-        """Build a `DoraConfig`, or None if `dir` could not be resolved.
+    def dora_config(self, require_dir: bool = True) -> tp.Optional[DoraConfig]:
+        """Build a `DoraConfig`, or None if there is no `[dora]` section.
 
-        Returning None rather than a half-built config is the point: a wrong
-        experiment directory would silently look at nothing, which is worse than
-        being slow.
+        With `require_dir`, also returns None when the experiment directory
+        cannot be resolved. That is the right default for read-only commands: a
+        wrong directory would silently look like an empty one, which is worse
+        than falling back to importing the project. The training path passes
+        False, because it wants `exclude` -- which decides signatures -- and
+        gets its directory from the config or from the project itself.
         """
         if not self._dora:
             return None
@@ -130,7 +133,10 @@ class ProjectConfig:
         values = {key: _interpolate(value)
                   for key, value in self._dora.items() if key != "dir_probe"}
         directory = values.get("dir")
-        if directory is None or isinstance(directory, _Unresolved) or not str(directory):
+        if directory is not None and (isinstance(directory, _Unresolved)
+                                      or not str(directory)):
+            directory = None
+        if directory is None:
             # Fall back to probing: the first entry whose `probe` path exists
             # wins. Projects that run on several clusters pick their experiment
             # directory by looking for a marker path, and this lets them say so
@@ -148,7 +154,10 @@ class ProjectConfig:
                         directory = candidate
                     break
             if directory is None:
-                return None
+                if require_dir:
+                    return None
+                values.pop("dir", None)
+                return DoraConfig(**values)
         # A relative dir is relative to the repository root, not to wherever the
         # command happened to be run from.
         values["dir"] = Path(directory)

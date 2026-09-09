@@ -141,3 +141,23 @@ def test_malformed_probe_is_rejected(tmp_path):
     write(tmp_path, '[dora]\ndir = "${env:NOPE}"\n\n[[dora.dir_probe]]\nprobe = "/tmp"\n')
     with pytest.raises(project.ProjectConfigError, match="dir_probe"):
         project.load(tmp_path).dora_config()
+
+
+def test_dora_config_without_dir_still_carries_exclusions(tmp_path, monkeypatch):
+    """`exclude` decides signatures, so it must survive even when the
+    experiment directory cannot be resolved -- the training path gets its
+    directory elsewhere, but silently dropping the exclusions would re-sign
+    every experiment in the project."""
+    monkeypatch.delenv("XP_ROOT", raising=False)
+    write(tmp_path, '[dora]\ndir = "${env:XP_ROOT}"\nexclude = ["device"]\n')
+    conf = project.load(tmp_path)
+
+    assert conf.dora_config() is None                     # read-only path: refuse to guess
+    lenient = conf.dora_config(require_dir=False)         # training path: keep what we know
+    assert lenient is not None
+    assert lenient.is_excluded("device")
+
+
+def test_no_dora_section_yields_no_config(tmp_path):
+    write(tmp_path, '[project]\npackage = "proj"\n')
+    assert project.load(tmp_path).dora_config(require_dir=False) is None
