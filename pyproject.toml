@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "dora_search"
@@ -8,24 +8,26 @@ description = "Easy grid searches for ML."
 authors = [
     {name = "Alexandre Défossez", email = "alex@gradium.ai"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 readme = "README.md"
-requires-python = ">=3.7.0"
+requires-python = ">=3.10.0"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "omegaconf",
-    "retrying",
     "submitit",
     "treetable",
     "torch",
+    # `dora.toml` parsing; tomllib is stdlib from 3.11 and this project
+    # supports 3.10.
+    "tomli; python_version < '3.11'",
 ]
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/gradium-ai/dora"
+Homepage = "https://github.com/kyutai-labs/dora"
 
 [project.scripts]
 dora = "dora.__main__:main"
@@ -42,16 +44,30 @@ dev = [
     "pytest",
 ]
 
-[tool.setuptools]
-include-package-data = true
+[tool.hatch.version]
+path = "dora/__init__.py"
 
-[tool.setuptools.packages.find]
+[tool.hatch.build.targets.wheel]
+packages = ["dora"]
 
-[tool.setuptools.package-data]
-dora = ["py.typed"]
-
-[tool.setuptools.dynamic]
-version = {attr = "dora.__version__"}
+[tool.hatch.build.targets.sdist]
+include = [
+    "dora",
+    "examples",
+    "templates",
+    "CHANGELOG.md",
+    "LICENSE",
+    "Makefile",
+    "README.md",
+    "requirements.txt",
+    "setup.cfg",
+]
+exclude = [
+    "examples/outputs",
+    "examples/outputs_complex",
+    "examples/outputs_pl",
+    "examples/data",
+]
 
 [tool.pytest.ini_options]
 testpaths = [

@@ -9,7 +9,7 @@ tests:
 	coverage html --include 'dora/*'
 
 dist:
-	python3 setup.py sdist
+	python3 -m build
 
 clean:
 	rm -r docs dist build *.egg-info

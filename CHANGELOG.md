@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## Unreleased
+## [0.2.0a1] - TBD
 
 Faster, quieter, and readable without importing your project.
 
@@ -34,10 +34,12 @@ Faster, quieter, and readable without importing your project.
 - Added `dora.tests.golden`, a signature regression harness.
 - Added `templates/SKILL.md`, a Claude Code skill for driving Dora.
 
+## [0.1.13] - 2026-09-09
 
-## [0.1.13] - TBD
+This is the first release of the [kyutai-labs](https://github.com/kyutai-labs/dora) fork
+of Dora, which has diverged from [facebookresearch/dora](https://github.com/facebookresearch/dora).
 
-Adding dependent jobs. E.g., use `launcher.slurm_(dependents=5`). Incompatible with
+Adding dependent jobs. E.g., use `launcher.slurm_(dependents=5)`. Incompatible with
 job arrays.
 
 Adding possiblity to force the initialization of distributed even when world size=1 by setting
@@ -49,6 +51,12 @@ Adding `post_git_save_commands` to run commands from the clone of the repo when 
 
 Adding support for srun args.
 
+Adding `nodelist` slurm param to restrict a job to a given list of nodes.
+
+Adding `python` slurm param to let submitit use an alternative python interpreter.
+
+Experimental support for jobs without GPUs (`gpus=0`), in which case no `gres` is requested.
+
 Fixing issue with job array crashing.
 
 Fixed docker support through `force_chdir` param.
@@ -59,6 +67,16 @@ Added option to run code locally. Changed Hydra flags so that only rank 0 logs t
 Removed lightning.
 
 Added json files to easily get the job id.
+
+No longer calling `scontrol show hostnames` at boot time, using submitit's nodelist parser
+instead. Torch is now imported lazily by `dora.distrib`, which speeds up grid files.
+
+Fixed submission happening from the wrong folder when using git save, and a related bug
+with job arrays. Better error message when a local code clone exists but its tar file is missing.
+
+Packaging moved from `setup.py`/`MANIFEST.in` to `pyproject.toml`, using the hatchling
+build backend. The `examples` package is no longer installed alongside `dora`.
+The minimum supported Python is now explicitly 3.10.
 
 ## [0.1.12] - 2023-05-23
 
