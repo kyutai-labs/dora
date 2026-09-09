@@ -135,3 +135,16 @@ def test_complex_types(tmpdir):
     argv = main.value_to_argv({"complex.b": {"a": 21, "b": 52}})
     xp = call(main, argv)
     assert xp.cfg.complex.b == {"a": 21, "b": 52}
+
+
+def test_config_groups_unaffected_by_no_copy(tmpdir):
+    """`_get_config_groups` suppresses Hydra's internal deepcopies for speed.
+
+    That is only sound if it does not change the answer, so compare against a
+    run with Hydra's real `__deepcopy__` in place.
+    """
+    # `hydra_main` rewrites `_main.__module__`, and the config path is resolved
+    # relative to it, so restore it the way the other tests here do.
+    _main.__module__ = __name__
+    main = get_main(tmpdir)
+    assert main._get_config_groups(fast=True) == main._get_config_groups(fast=False)

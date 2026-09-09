@@ -13,15 +13,16 @@ and can be called repeatidly to schedule XPs.
 `Explorer`: defines some metadata, in particular the metrics to display
 with the `dora grid` command.
 """
+from __future__ import annotations
 from collections import OrderedDict
 from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor, Future
+from concurrent.futures import ProcessPoolExecutor, Future  # noqa: F401
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import typing as tp
 
-from treetable.table import _Node
-import treetable as tt
+if tp.TYPE_CHECKING:
+    from treetable.table import _Node
 
 from .conf import SlurmConfig
 from .shep import Shepherd, Sheep
@@ -198,14 +199,15 @@ class Explorer:
     def __call__(self, launcher: Launcher):
         self.explore(launcher)
 
-    def get_grid_metrics(self) -> tp.List[_Node]:
+    def get_grid_metrics(self) -> tp.List["_Node"]:
         """Return the metrics that should be displayed in the tracking table.
         """
         return []
 
-    def get_grid_meta(self) -> tp.List[_Node]:
+    def get_grid_meta(self) -> tp.List["_Node"]:
         """Returns the list of Meta information to display for each XP/job.
         """
+        import treetable as tt
         return [
             tt.leaf("index", align=">"),
             tt.leaf("name"),

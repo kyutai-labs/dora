@@ -64,15 +64,29 @@ __version__ = "0.1.13a20"
 
 # flake8: noqa
 from .explore import Explorer, Launcher
-try:
-    import hydra
-except ImportError:
-    pass
-else:
-    from .hydra import hydra_main
 from . import conf, grid
 from .git_save import to_absolute_path
 from .link import Link
 from .main import argparse_main
 from .shep import Sheep
 from .xp import get_xp, is_xp, XP
+
+
+def __getattr__(name: str):
+    """Resolve `dora.hydra_main` on first access (PEP 562).
+
+    Importing `dora.hydra` eagerly used to cost ~1.7s: it imports Hydra, and
+    through `dora.distrib` it imported torch. Almost nothing that touches Dora
+    needs either -- reading experiment metadata certainly does not -- so the
+    Hydra entry point is now resolved only when someone actually asks for it.
+    `import dora.hydra` and `from dora import hydra_main` both keep working.
+    """
+    if name == "hydra_main":
+        try:
+            import hydra  # noqa: F401
+        except ImportError:
+            raise AttributeError(
+                "dora.hydra_main requires Hydra, which is not installed.") from None
+        from .hydra import hydra_main
+        return hydra_main
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

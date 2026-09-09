@@ -8,7 +8,6 @@
 This module provides support for Hydra, in particular the `main` wrapper between
 the end user `main` function and Hydra.
 """
-import copy
 from collections import namedtuple, OrderedDict
 from importlib.util import find_spec
 import json
@@ -20,18 +19,11 @@ from unittest import mock
 
 import hydra
 from hydra.core.global_hydra import GlobalHydra
-try:
-    from hydra import compose, initialize_config_dir  # type: ignore
-except ImportError:
-    from hydra.experimental import compose, initialize_config_dir  # type: ignore
-    old_hydra = True
-else:
-    old_hydra = False
+from hydra import compose, initialize_config_dir  # type: ignore
 
 from omegaconf.dictconfig import DictConfig
 
 from .conf import DoraConfig, SlurmConfig, update_from_hydra
-from .distrib import get_distrib_spec
 from .main import DecoratedMain, MainFun
 from .xp import XP, get_xp, is_xp
 
@@ -39,8 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 def _no_copy(self: tp.Any, memo: tp.Any):
-    # Dirty trick to speed up Hydra, will remove when Hydra 1.1
-    # is released, which solves the issues.
+    """Identity stand-in for `DictConfig.__deepcopy__`.
+
+    Used to suppress Hydra's defensive deepcopies in read-only code paths where
+    nothing mutates the config.
+    """
     return self
 
 
@@ -222,6 +217,10 @@ class HydraMain(DecoratedMain):
         return parts
 
     def _main(self):
+        # Imported here rather than at module scope: `dora.distrib` pulls in torch
+        # (~1.5s), and this is the only place in `dora.hydra` that needs it. Keeping
+        # it out of the import graph is what makes `import dora` cheap.
+        from .distrib import get_distrib_spec
         if is_xp():
             run_dir = f"hydra.run.dir={get_xp().folder}"
             sys.argv.append(run_dir)
@@ -235,13 +234,33 @@ class HydraMain(DecoratedMain):
         finally:
             if is_xp():
                 sys.argv.remove(run_dir)
+            # `hydra.main` leaves GlobalHydra initialized on the way out, which
+            # makes any later `initialize_config_dir` in the same process raise.
+            # That bites anything running more than one XP per process -- test
+            # suites, notebooks -- and consumers have had to clear it themselves.
+            GlobalHydra.instance().clear()
 
-    def _get_config_groups(self) -> tp.List[str]:
+    def _get_config_groups(self, fast: bool = True) -> tp.List[str]:
+        """List the Hydra config groups, used to tell `group=value` overrides
+        from plain `dotted.key=value` ones.
+
+        `fast` suppresses Hydra's internal deepcopies; pass False to get the
+        unaccelerated answer, which the tests compare against.
+        """
         with initialize_config_dir(str(self.full_config_path), job_name=self._job_name,
                                    **self.hydra_kwargs):
             gh = GlobalHydra.instance().hydra
             assert gh is not None
-            return list(gh.list_all_config_groups())
+            if not fast:
+                return list(gh.list_all_config_groups())
+            # `list_all_config_groups` builds a fresh CachingConfigRepository per
+            # group, and each one deepcopies the whole config-source list -- about
+            # two thirds of the cost of this call, which runs at import time for
+            # every Dora invocation. Nothing here mutates a config, we only read
+            # group names, so making the copy a no-op is safe.
+            # `test_hydra.py::test_config_groups_unaffected_by_no_copy` pins that.
+            with mock.patch.object(DictConfig, "__deepcopy__", _no_copy):
+                return list(gh.list_all_config_groups())
 
     def _is_active(self, argv: tp.List[str]) -> bool:
         if '-m' in argv or '--multirun' in argv:
@@ -284,13 +303,7 @@ class HydraMain(DecoratedMain):
             return self._get_config_noinit(overrides)
 
     def _get_config_noinit(self, overrides: tp.List[str] = []) -> DictConfig:
-        if old_hydra:
-            with mock.patch.object(DictConfig, "__deepcopy__", _no_copy):
-                cfg = compose(self.config_name, overrides)  # type: ignore
-            cfg = copy.deepcopy(cfg)
-        else:
-            cfg = compose(self.config_name, overrides)  # type: ignore
-        return cfg
+        return compose(self.config_name, overrides)  # type: ignore
 
     def _get_delta(self, init: DictConfig, other: DictConfig):
         """

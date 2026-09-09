@@ -29,8 +29,6 @@ from .log import colorize, simple_log, fatal
 from .shep import Sheep, Shepherd
 from .utils import import_or_fatal, reliable_rmtree, try_load
 
-import treetable as tt
-
 log: tp.Callable[[str], None] = partial(simple_log, "Grid:")
 
 
@@ -415,6 +413,7 @@ def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List
         line.update(other)
         lines.append(line)
 
+    import treetable as tt
     if base_name:
         maybe_print("Base name: ", base_name)
     table = tt.table(

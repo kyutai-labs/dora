@@ -5,14 +5,36 @@
 # LICENSE file in the root directory of this source tree.
 
 import json
+import functools
 import logging
 from pathlib import Path
 import typing as tp
 
-from retrying import retry
 from . import utils
 
 logger = logging.getLogger(__name__)
+
+
+def _retry(attempts: int):
+    """Retry a method a few times before giving up.
+
+    A local decorator rather than `retrying.retry`: this is the only
+    decorator-time third-party import left in Dora, and paying for it on every
+    `import dora` to protect one file read is a poor trade.
+    """
+    def _decorator(func):
+        @functools.wraps(func)
+        def _wrapped(*args, **kwargs):
+            for attempt in range(1, attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if attempt == attempts:
+                        raise
+                    logger.debug("%s failed (attempt %d/%d), retrying.",
+                                 func.__name__, attempt, attempts)
+        return _wrapped
+    return _decorator
 
 
 class Link:
@@ -31,7 +53,7 @@ class Link:
         self.history_file = history_file
 
     # Retry operation as history file might be stale for  update by running XP
-    @retry(stop_max_attempt_number=10)
+    @_retry(10)
     def load(self):
         if self.history_file is None:
             return

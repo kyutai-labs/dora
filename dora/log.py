@@ -10,7 +10,6 @@ import sys
 import time
 import typing as tp
 
-from treetable.text import colorize
 
 
 class LogProgress:
@@ -96,6 +95,16 @@ class LogProgress:
         if infos:
             out += " | " + infos
         self.logger.log(self.level, out)
+
+
+def colorize(text: str, color: str) -> str:
+    """Wrap `text` in an ANSI colour code.
+
+    Re-exported by `dora.grid`. Kept as a wrapper so that `treetable` -- needed
+    only when something is actually rendered -- stays off the import path.
+    """
+    from treetable.text import colorize as _colorize
+    return _colorize(text, color)
 
 
 def bold(text: str) -> str:

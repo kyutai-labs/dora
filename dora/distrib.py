@@ -9,11 +9,13 @@ import logging
 import os
 import random
 
-import submitit
-from submitit.slurm.slurm import _parse_node_list
-import torch
-
 from .xp import get_xp
+
+# torch and submitit are imported inside the functions that need them. Only the
+# handful of entry points that actually talk to a process group require torch,
+# while `get_distrib_spec` -- which the rest of Dora calls just to learn its rank
+# -- is pure environment reading. Keeping torch out of this module's import graph
+# is what keeps `import dora` off the 1.5s torch path.
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ def set_distrib_env():
     if 'MASTER_ADDR' not in os.environ:
         assert 'SLURM_JOB_NODELIST' in os.environ, "case not handled"
         nodelist = os.environ['SLURM_JOB_NODELIST']
+        from submitit.slurm.slurm import _parse_node_list
         nodes = _parse_node_list(nodelist)
         master_node = nodes[0]
         os.environ['MASTER_ADDR'] = master_node
@@ -43,6 +46,7 @@ def set_distrib_env():
         # but that shouldn't really happen
         seed = xp.sig
         # If we are in a Slurm job, let us use the Slurm job id.
+        import submitit
         try:
             env = submitit.JobEnvironment()
         except RuntimeError:
@@ -73,6 +77,7 @@ def get_distrib_spec():
         num_nodes = 1
         source = "env"
     else:
+        import submitit
         try:
             env = submitit.JobEnvironment()
         except RuntimeError:
@@ -96,6 +101,7 @@ def init(backend='nccl'):
     """
     Initialize DDP.
     """
+    import torch
     if torch.distributed.is_initialized():
         return
     spec = get_distrib_spec()
@@ -133,6 +139,7 @@ def is_master():
 
 
 def rank():
+    import torch
     if torch.distributed.is_initialized():
         return torch.distributed.get_rank()
     else:
@@ -140,6 +147,7 @@ def rank():
 
 
 def world_size():
+    import torch
     if torch.distributed.is_initialized():
         return torch.distributed.get_world_size()
     else:

@@ -7,14 +7,15 @@
 """
 Basic configuration for Dora is here.
 """
+from __future__ import annotations
 from argparse import Namespace
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 import typing as tp
 
-from omegaconf.dictconfig import DictConfig
-from omegaconf import OmegaConf
+if tp.TYPE_CHECKING:
+    from omegaconf.dictconfig import DictConfig
 
 
 def update_from_args(data: tp.Any, args: Namespace):
@@ -28,9 +29,10 @@ def update_from_args(data: tp.Any, args: Namespace):
                 setattr(data, key, value)
 
 
-def update_from_hydra(data: tp.Any, cfg: DictConfig):
+def update_from_hydra(data: tp.Any, cfg: "DictConfig"):
     """Update the given dataclass from the hydra config.
     """
+    from omegaconf import OmegaConf
 
     dct = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(dct, dict)

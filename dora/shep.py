@@ -6,6 +6,7 @@
 
 """Scheduling and job monitoring utilities.
 """
+from __future__ import annotations
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass, field, asdict
 import json
@@ -18,9 +19,13 @@ import sys
 import tempfile
 import typing as tp
 
-
-from submitit import SlurmJob
-import submitit
+# submitit costs ~80ms to import and is only needed once we actually talk to
+# Slurm. With `from __future__ import annotations` every reference below is a
+# string, so the real import happens at the three call sites that submit,
+# cancel or poll.
+if tp.TYPE_CHECKING:
+    import submitit
+    from submitit import SlurmJob
 
 from . import git_save
 from .conf import SlurmConfig, SubmitRules
@@ -93,6 +98,7 @@ class _SubmitItTarget:
             xp = get_xp()
             if xp.rendezvous_file.exists():
                 xp.rendezvous_file.unlink()
+        import submitit
         return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
 
 
@@ -284,6 +290,7 @@ class Shepherd:
         """
         Force an update of all job states with submitit.
         """
+        from submitit import SlurmJob
         SlurmJob.watcher.update()
 
     @contextmanager
@@ -377,6 +384,7 @@ class Shepherd:
                                slurm_config: SlurmConfig) -> submitit.SlurmExecutor:
         os.environ['SLURM_KILL_BAD_EXIT'] = '1'  # Kill the job if any of the task fails
         kwargs = dict(slurm_config.__dict__)
+        import submitit
         executor = submitit.SlurmExecutor(
             folder=folder, max_num_timeout=kwargs.pop('max_num_timeout'),
             python=kwargs.pop('python'))
