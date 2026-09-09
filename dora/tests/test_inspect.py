@@ -11,6 +11,7 @@ programmatically, so most of what is worth testing is the output discipline:
 caps, no colour, no pathological lines.
 """
 import json
+import time as _time
 
 import pytest
 
@@ -117,7 +118,7 @@ def test_why_reports_the_cause_once_across_ranks(dora, capsys):
         (folder / "submitit" / f"42_{rank}_log.out").write_text(
             f"[2026-01-0{rank}] step\ntorch.OutOfMemoryError: CUDA out of memory\n")
 
-    args = _Args(targets=["ffffffff"], job=None, json=False, limit=None)
+    args = _Args(targets=["ffffffff"], job=None, json=False, limit=None, attempts=3)
     assert inspect.why_action(args, dora) == 0
     out = capsys.readouterr().out
     assert "out of memory" in out
@@ -145,3 +146,67 @@ def test_elide_parts_keeps_whole_key_values():
 class _Args:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+
+
+def test_traceback_stops_at_the_exception(dora, capsys):
+    """A distributed job prints hundreds of lines of NCCL teardown after it
+    dies. Running the traceback to end-of-file buries the one line anyone
+    wanted."""
+    folder = make_xp(dora, "11111111", job_id="7")
+    (folder / "submitit").mkdir()
+    (folder / "submitit" / "7_0_log.out").write_text(
+        "Error executing job with overrides: " + "x=1 " * 900 + "\n"
+        "Traceback (most recent call last):\n"
+        '  File "train.py", line 1, in main\n'
+        "    boom()\n"
+        "ZeroDivisionError: float division by zero\n"
+        + "\n".join(f"NCCL INFO teardown line {i}" for i in range(200)) + "\n")
+
+    args = _Args(targets=["11111111"], job=None, json=False, limit=None, attempts=3)
+    assert inspect.why_action(args, dora) == 0
+    out = capsys.readouterr().out
+    assert "ZeroDivisionError: float division by zero" in out
+    assert "NCCL INFO teardown" not in out
+    # Hydra wraps every exception in main with that banner, so trusting it
+    # would report a division by zero as a configuration error.
+    assert "hydra config error" not in out
+    assert "x=1 x=1" not in out
+
+
+def test_why_looks_back_through_earlier_attempts(dora, capsys):
+    """The current job succeeding does not mean nothing went wrong: an
+    experiment is usually requeued or resubmitted several times, and the
+    failure people ask about is often in an earlier attempt."""
+    folder = make_xp(dora, "22222222", job_id="900")
+    (folder / "submitit").mkdir()
+    (folder / "submitit" / "400_0_log.out").write_text(
+        "Traceback (most recent call last):\n"
+        '  File "train.py", line 1, in main\n'
+        "FileNotFoundError: no such data\n")
+    (folder / "submitit" / "900_0_log.out").write_text("all good\ndone\n")
+    import os
+    now = _time.time()
+    os.utime(folder / "submitit" / "400_0_log.out", (now - 500, now - 500))
+    os.utime(folder / "submitit" / "900_0_log.out", (now, now))
+
+    args = _Args(targets=["22222222"], job=None, json=False, limit=None, attempts=3)
+    assert inspect.why_action(args, dora) == 0
+    out = capsys.readouterr().out
+    assert "FileNotFoundError: no such data" in out
+    assert "attempt 400" in out
+    assert "not the current job 900" in out
+
+
+def test_current_attempt_comes_from_job_json_not_the_biggest_id(dora):
+    """Slurm's accounting database gets reset and job ids start again from a
+    low number, so a larger id is not a later job."""
+    folder = make_xp(dora, "33333333", job_id="12")
+    (folder / "submitit").mkdir()
+    for job in ("12", "99999"):
+        (folder / "submitit" / f"{job}_0_log.out").write_text("x\n")
+    target = inspect.Target(sig="33333333", folder=folder)
+    assert log_attempt_names(target, current_job="12")[0] == "12"
+
+
+def log_attempt_names(target, current_job=None):
+    return [name for name, _ in inspect.log_attempts(target, current_job=current_job)]

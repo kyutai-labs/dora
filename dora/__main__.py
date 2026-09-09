@@ -172,7 +172,9 @@ def get_parser():
 
     why = add_inspect("why", "Explain why an experiment failed.",
                       "A signature, grid name or job id.")
-    why.add_argument("--job", default=None, help="Look at this job id's logs.")
+    why.add_argument("--job", default=None, help="Look only at this job id's logs.")
+    why.add_argument("--attempts", type=int, default=3,
+                     help="How many job attempts to look back through (default 3).")
     why.set_defaults(action=_inspect.why_action)
 
     plan = subparsers.add_parser(

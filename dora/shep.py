@@ -221,6 +221,20 @@ class Sheep:
         return out
 
 
+def relink(link: Path, target: Path):
+    """Point `link` at `target`, replacing whatever was there.
+
+    Slurm job ids are not unique forever: the accounting database gets reset,
+    and ids start again from a low number. So a `by_id` entry may well already
+    exist and point at some unrelated, older experiment. Failing on that would
+    make submission crash for no good reason, and keeping the old target would
+    silently answer `dora info -j` with the wrong experiment.
+    """
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(target)
+
+
 def no_log(x: str):
     """No logging logging function, passed to `Shepherd`.
     """
@@ -566,9 +580,7 @@ class Shepherd:
                 sheep.job = job  # type: ignore
                 sheep._other_jobs = jobs  # type: ignore
                 sheep._dependent_jobs = dependent_jobs  # type: ignore
-                link = self._by_id / job.job_id
-                link = link
-                link.symlink_to(sheep.xp.folder.resolve())
+                relink(self._by_id / job.job_id, sheep.xp.folder.resolve())
                 if is_array:
                     # We link the array submitit folder to be sure
                     # we keep an history of all arrays the XP was in.
@@ -577,10 +589,7 @@ class Shepherd:
                         assert submitit_link.resolve() == submitit_folder.resolve()
                     else:
                         submitit_link.symlink_to(submitit_folder)
-                latest = sheep.xp._latest_submitit
-                if latest.exists():
-                    latest.unlink()
-                latest.symlink_to(submitit_folder)
+                relink(sheep.xp._latest_submitit, submitit_folder)
 
                 name = self.main.get_name(sheep.xp)
                 self.log(f"Scheduled job {job.job_id} for sheep {sheep.xp.sig}/{name}")

@@ -31,6 +31,11 @@ Faster, quieter, and readable without importing your project.
   run in one process.
 - Sped up config group listing by suppressing Hydra's internal deepcopies
   (451ms to 153ms, at import time on every invocation).
+- `dora why` now works per job attempt rather than per log file, so a failure
+  in an earlier attempt is found even when the latest one succeeded, and it
+  bounds the traceback at the exception instead of running to end of file.
+- `by_id` symlinks are retargeted rather than failing when the entry exists,
+  which happens once Slurm's accounting database is reset and job ids repeat.
 - Added `dora.tests.golden`, a signature regression harness.
 - Added `templates/SKILL.md`, a Claude Code skill for driving Dora.
 - Minimum supported Python is now 3.11, so `dora.toml` parsing uses the stdlib

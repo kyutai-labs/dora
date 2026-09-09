@@ -531,6 +531,53 @@ def log_files(target: Target, rank: tp.Optional[int] = None,
                   key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+LOG_NAME_RE = re.compile(r"^(?P<job>\d+(?:_\d+)?)_(?P<task>\d+)_log\.out$")
+
+
+def log_attempts(target: Target,
+                 current_job: tp.Optional[str] = None
+                 ) -> tp.List[tp.Tuple[str, tp.List[Path]]]:
+    """Group an experiment's logs by the job attempt that produced them.
+
+    An experiment is usually run more than once -- requeued, resubmitted after a
+    fix, restarted from a checkpoint -- and each attempt writes a full set of
+    per-rank logs. Sorting all of them by modification time interleaves the
+    attempts and buries an older failure under a newer success, so "why did this
+    fail" has to be asked per attempt, newest first.
+
+    `current_job` -- from the experiment's `job.json` -- is put first, because
+    it is the only authoritative statement of which attempt is current. Note
+    that a larger job id does not mean a later job: Slurm's accounting database
+    gets reset and ids start again from a low number. Everything else falls back
+    to modification time, which stays correct across such a reset.
+
+    Returns `[(attempt, paths)]`, newest attempt first. `solver.log.*` are the
+    current run's per-rank logs and are grouped under "solver".
+    """
+    groups: tp.Dict[str, tp.List[Path]] = {}
+    submitit = target.folder / "latest"
+    if not submitit.exists():
+        submitit = target.folder / "submitit"
+    if submitit.exists():
+        for path in submitit.glob("*_log.out"):
+            match = LOG_NAME_RE.match(path.name)
+            groups.setdefault(match.group("job") if match else "?", []).append(path)
+    solver = sorted(target.folder.glob("solver.log.*"))
+    if solver:
+        groups["solver"] = solver
+    train = target.folder / "train.log"
+    if train.is_file():
+        groups.setdefault("train", []).append(train)
+
+    def newest(paths: tp.List[Path]) -> float:
+        return max((p.stat().st_mtime for p in paths), default=0.0)
+
+    ordered = sorted(groups.items(), key=lambda kv: newest(kv[1]), reverse=True)
+    if current_job:
+        ordered.sort(key=lambda kv: kv[0] != current_job)
+    return ordered
+
+
 def clean(line: str) -> str:
     """Strip colour and cut the pathological lines.
 
@@ -587,8 +634,7 @@ def log_action(args: tp.Any, dora: DoraConfig) -> int:
 # "the step died", which says more than a Slurm exit code.
 FAILURE_PATTERNS: tp.List[tp.Tuple[str, str]] = [
     ("out of memory", r"torch\.OutOfMemoryError|CUDA out of memory|out of memory"),
-    ("hydra config error", r"Error executing job with overrides|MissingConfigException"
-                           r"|ConfigCompositionException"),
+    ("hydra config error", r"MissingConfigException|ConfigCompositionException"),
     ("NCCL / collective timeout", r"NCCL.*(timeout|error)|Watchdog caught|ProcessGroupNCCL"),
     ("could not start the job", r"execve\(\)|command not found|No such file or directory"),
     ("killed by Slurm", r"DUE TO TIME LIMIT|CANCELLED AT|oom-kill|slurmstepd: error"
@@ -604,20 +650,56 @@ def classify(lines: tp.Sequence[str]) -> tp.Optional[str]:
     return None
 
 
-def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
-    """The last Python traceback, compressed to its ends.
+# Lines that continue a traceback rather than ending it.
+_CHAINED = ("During handling of the above exception",
+            "The above exception was the direct cause",
+            "Traceback (most recent call last)")
 
-    Middle frames are almost always framework plumbing; the top says where it
-    started and the bottom says what actually went wrong.
+
+def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
+    """The last Python traceback, bounded and compressed to its ends.
+
+    Bounding matters more than it sounds. A traceback is followed by whatever
+    the process printed on its way down -- for a distributed job that is
+    hundreds of lines of NCCL teardown -- so running to the end of the file
+    buries the exception, which is the one line anybody wanted. A traceback ends
+    at the first unindented line after the header, and that line *is* the
+    exception, unless it says the exception was chained, in which case the real
+    one is further down.
+
+    Middle frames are almost always framework plumbing, so the top (where it
+    started) and the bottom (where it broke) are kept and the rest counted.
     """
     starts = [i for i, line in enumerate(lines)
               if line.lstrip().startswith("Traceback (most recent call last)")]
     if not starts:
         return []
-    block = list(lines[starts[-1]:])
+
+    block = [lines[starts[-1]]]
+    for line in lines[starts[-1] + 1:]:
+        if not line.strip() or line.startswith((" ", "\t")):
+            block.append(line)
+            continue
+        block.append(line)
+        if not line.startswith(_CHAINED):
+            break  # the exception line: the traceback ends here
+    while block and not block[-1].strip():
+        block.pop()
+
     if len(block) > 12:
-        block = block[:4] + [f"  ... {len(block) - 10} frames ..."] + block[-6:]
+        head, tail_ = block[:4], block[-5:]
+        block = head + [f"  ... {len(block) - len(head) - len(tail_)} frames ..."] + tail_
     return block
+
+
+def exception_line(trace: tp.Sequence[str]) -> tp.Optional[str]:
+    """The `SomeError: message` a traceback ends on, if it looks like one."""
+    if not trace:
+        return None
+    last = trace[-1].strip()
+    if re.match(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt|Warning)\b", last):
+        return last
+    return last if ":" in last and not last.startswith(("File ", "  ")) else None
 
 
 def why_action(args: tp.Any, dora: DoraConfig) -> int:
@@ -629,60 +711,95 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     target = resolution.targets[0]
 
     job = read_json(target.folder / "job.json") or {}
-    job_id = job.get("job_id", "")
-    state = job_states([job_id]).get(job_id, "?") if job_id else "-"
+    current_job = job.get("job_id", "")
 
-    paths = log_files(target, job_id=args.job)
-    findings = []
-    for path in paths[:16]:
-        lines = tail(path, 400)
-        label = classify(lines)
-        trace = extract_traceback(lines)
-        if label or trace:
+    attempts = log_attempts(target, current_job=current_job)
+    if args.job:
+        attempts = [(name, paths) for name, paths in attempts if name == args.job]
+
+    states = job_states([name for name, _ in attempts if name.isdigit()]
+                        + ([current_job] if current_job else []))
+    current_state = states.get(current_job, "?") if current_job else "-"
+
+    # Walk attempts newest first and stop at the first one that explains
+    # something. An older failure is still the answer when the newest attempt
+    # merely ran out of time or is still going.
+    culprit: tp.Optional[str] = None
+    findings: tp.List[dict] = []
+    scanned = 0
+    for name, paths in attempts:
+        if scanned >= args.attempts:
+            break
+        scanned += 1
+        for path in sorted(paths):
+            lines = tail(path, 1500)
+            trace = extract_traceback(lines)
+            label = classify(lines)
+            if trace:
+                # The exception names the failure far better than any pattern.
+                # Hydra wraps every exception in main with "Error executing job
+                # with overrides", so trusting patterns here would report a
+                # missing data file as a configuration error.
+                label = exception_line(trace) or label
+            if not (label or trace):
+                continue
             evidence = trace
             if not evidence and label:
-                pattern = re.compile(
-                    next(p for name, p in FAILURE_PATTERNS if name == label),
-                    re.IGNORECASE)
-                evidence = [ln for ln in lines if pattern.search(ln)][-3:]
-            findings.append({"file": path.name, "cause": label, "traceback": evidence})
+                patterns = [p for lab, p in FAILURE_PATTERNS if lab == label]
+                if patterns:
+                    expr = re.compile(patterns[0], re.IGNORECASE)
+                    evidence = [ln for ln in lines if expr.search(ln)][-3:]
+            findings.append({"attempt": name, "file": path.name,
+                             "cause": label, "traceback": evidence})
+        if findings:
+            culprit = name
+            break
 
     if args.json:
-        emit([], as_json={"sig": target.sig, "job": job_id, "state": state,
+        emit([], as_json={"sig": target.sig, "job": current_job,
+                          "state": current_state, "attempt": culprit,
+                          "attempts": [name for name, _ in attempts],
                           "findings": findings})
         return 0
 
-    lines = [f"{target.sig}  job {job_id or '-'}  state {state}"]
+    header = f"{target.sig}  job {current_job or '-'}  state {current_state}"
+    jobs = [name for name, _ in attempts if name.isdigit()]
+    if len(jobs) > 1:
+        header += f"  ({len(jobs)} attempts: " + " ".join(jobs[:6]) + ")"
+    lines = [header]
+
     if not findings:
-        # Nothing recognisable. The last words of the newest log are still the
-        # best guess available, and are more use than admitting defeat.
         lines.append("no known failure signature; last lines of the newest log:")
-        for path in paths[:1]:
+        for _, paths in attempts[:1]:
+            path = sorted(paths)[0]
             lines.append(f"[{path.name}]")
             lines += [ln for ln in tail(path, 12) if ln.strip()][-6:]
-        if not paths:
+        if not attempts:
             lines.append("(no logs at all for this experiment)")
         lines.append(f"more: dora log {target.sig} --tail 80")
-    else:
-        # Report one explanation, deduplicated: ranks fail together and the
-        # same traceback on eight of them is one problem, not eight.
-        seen: tp.Set[str] = set()
-        for finding in findings:
-            # Ranks fail together, and the same failure on eight of them is one
-            # problem. Timestamps and rank numbers differ, so they are stripped
-            # before comparing.
-            body = "\n".join(finding["traceback"][-3:]) or str(finding["cause"])
-            key = str(finding["cause"]) + re.sub(r"\d+", "#", body)
-            if key in seen:
-                continue
-            seen.add(key)
-            lines.append(f"[{finding['file']}] {finding['cause'] or 'traceback'}")
-            lines += finding["traceback"]
-            if len(seen) >= 2:
-                break
-        others = len(findings) - len(seen)
-        if others > 0:
-            lines.append(f"... same on {others} other rank(s)")
+        emit(lines)
+        return 0
+
+    attempt_state = states.get(culprit or "", "")
+    if culprit and culprit != current_job and culprit.isdigit():
+        lines.append(f"failure is from attempt {culprit}"
+                     + (f" ({attempt_state})" if attempt_state else "")
+                     + f", not the current job {current_job or '-'}")
+    # Ranks fail together, so report the cause once and count the rest.
+    seen: tp.Set[str] = set()
+    for finding in findings:
+        body = "\n".join(finding["traceback"][-3:]) or str(finding["cause"])
+        key = str(finding["cause"]) + re.sub(r"\d+", "#", body)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"[{finding['file']}] {finding['cause'] or 'traceback'}")
+        lines += finding["traceback"]
+        if len(seen) >= 2:
+            break
+    others = len(findings) - len(seen)
+    if others > 0:
+        lines.append(f"... same on {others} other rank(s)")
     emit(lines)
     return 0
 
