@@ -35,6 +35,9 @@ Faster, quieter, and readable without importing your project.
 - Added `templates/SKILL.md`, a Claude Code skill for driving Dora.
 - Minimum supported Python is now 3.11, so `dora.toml` parsing uses the stdlib
   `tomllib` with no third-party fallback.
+- `dora --help` now describes every command -- `grid`, `launch`, `info`,
+  `import` and `export` were listed but undocumented -- and says to prefer
+  `grid` over `launch`.
 
 ## [0.1.13] - 2026-09-09
 

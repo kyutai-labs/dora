@@ -41,8 +41,26 @@ def add_slurm_config(parser):
     parser.add_argument("--constraint", help="Constraint.")
 
 
+# Shown at the bottom of `dora --help`. Kept short: the per-command help above
+# it already lists what each one does, this is only for the choice that is easy
+# to get wrong.
+_EPILOG = """\
+Prefer `grid` over `launch`, even for a single job. A grid file is a record of
+what you ran: it lives in version control, it deduplicates experiments by
+signature, and re-running it monitors or resumes what is already scheduled.
+`launch` keeps none of that book keeping and cannot tune the Slurm config
+beyond a few flags. Use `run` for local debugging.
+
+Use `dora <command> --help` for the flags of any command.
+"""
+
+
 def get_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        prog="dora",
+        description="Easy grid searches for ML.",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         '--package', '-P',
         default=None,
@@ -59,7 +77,8 @@ def get_parser():
     parser.add_argument('--verbose', '-v', action='store_true', help="Show debug info.")
     subparsers = parser.add_subparsers(
         title="command", help="Command to execute", required=True, dest='command')
-    grid = subparsers.add_parser("grid")
+    grid = subparsers.add_parser(
+        "grid", help="Schedule and monitor a grid of experiments. The main entry point.")
     add_submit_rules(grid)
     add_slurm_config(grid)
     grid.add_argument("-C", "--cancel", action='store_true',
@@ -99,7 +118,8 @@ def get_parser():
                            "If empty, handle all experiments")
     grid.set_defaults(action=grid_action)
 
-    run = subparsers.add_parser("run", help="Run locally the given command.")
+    run = subparsers.add_parser(
+        "run", help="Run one experiment locally, for debugging.")
     run.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
     run.add_argument("-d", "--ddp", action="store_true", help="Distributed training.")
     run.add_argument("--ddp_workers", type=int,
@@ -111,7 +131,8 @@ def get_parser():
     run.add_argument("argv", nargs='*')
     run.set_defaults(action=run_action)
 
-    launch = subparsers.add_parser("launch")
+    launch = subparsers.add_parser(
+        "launch", help="Schedule a single job on Slurm. Prefer `grid`, see below.")
     launch.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
     launch.add_argument("-a", "--attach", action="store_true",
                         help="Attach to the remote process. Interrupting the command will "
@@ -127,7 +148,9 @@ def get_parser():
     launch.add_argument("argv", nargs='*')
     launch.set_defaults(action=launch_action)
 
-    info = subparsers.add_parser("info")
+    info = subparsers.add_parser(
+        "info", help="Everything known about one experiment. Verbose; "
+                     "`status`, `log` and `why` answer narrower questions.")
     info.add_argument("-f", "--from_sig", help="Signature of job to use as baseline.")
     info.add_argument("-j", "--job_id", help="Find job by job id.")
     info.add_argument("-C", "--cancel", action="store_true", help="Cancel job")
@@ -137,10 +160,13 @@ def get_parser():
     info.add_argument("argv", nargs='*')
     info.set_defaults(action=info_action)
 
-    import_ = subparsers.add_parser("import")
+    import_ = subparsers.add_parser(
+        "import", help="Read an exported blob on stdin and register those "
+                       "experiments locally, so their signatures resolve.")
     import_.set_defaults(action=import_action)
 
-    export = subparsers.add_parser("export")
+    export = subparsers.add_parser(
+        "export", help="Print a shareable blob describing the given experiments.")
     export.add_argument("sigs", nargs='*', help='All the XP sigs to export.')
     export.set_defaults(action=export_action)
 
