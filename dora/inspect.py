@@ -713,6 +713,20 @@ def plan_action(args: tp.Any, main: tp.Any) -> int:
                 if grid_folder.is_dir() else set())
     stale = sorted(existing - produced)
 
+    # A stale experiment meets one of two fates, and the difference matters a
+    # lot to whoever is about to launch: one that is still running gets
+    # cancelled, while one that already finished is merely unlinked from the
+    # grid and keeps its results.
+    stale_jobs = {}
+    for sig in stale:
+        job = read_json(dora.dir / dora.xps / sig / "job.json") or {}
+        stale_jobs[sig] = job.get("job_id", "")
+    stale_states = job_states(list(stale_jobs.values()))
+    live = [sig for sig in stale
+            if stale_states.get(stale_jobs[sig], "") in ("RUNNING", "PENDING",
+                                                         "REQUEUED", "SUSPENDED")]
+    finished = [sig for sig in stale if sig not in live]
+
     try:
         names, base = main.get_names([sheep.xp for sheep in sheeps])
     except Exception:
@@ -723,7 +737,9 @@ def plan_action(args: tp.Any, main: tp.Any) -> int:
                for i, (sheep, name) in enumerate(zip(sheeps, names))]
 
     if args.json:
-        emit([], as_json={"grid": args.grid, "experiments": records, "stale": stale})
+        emit([], as_json={"grid": args.grid, "experiments": records,
+                          "stale": stale, "would_cancel": live,
+                          "would_unlink": finished})
         return 0
 
     limit = args.limit or MAX_ROWS
@@ -737,9 +753,13 @@ def plan_action(args: tp.Any, main: tp.Any) -> int:
         lines.append(f"... {len(records) - limit} more (--limit)")
     new = sum(1 for r in records if not r["launched"])
     lines.append(f"{len(records) - new} launched | {new} new")
-    if stale:
-        lines.append(f"WARNING: {len(stale)} experiment(s) in the grid folder are no "
-                     f"longer produced and would be CANCELLED by a real launch: "
-                     + " ".join(stale[:10]) + (" ..." if len(stale) > 10 else ""))
+    if live:
+        lines.append(f"WARNING: {len(live)} running experiment(s) would be CANCELLED "
+                     "by a real launch, the grid no longer produces them: "
+                     + " ".join(live[:10]) + (" ..." if len(live) > 10 else ""))
+    if finished:
+        lines.append(f"{len(finished)} finished experiment(s) would be dropped from the "
+                     "grid (results kept): "
+                     + " ".join(finished[:10]) + (" ..." if len(finished) > 10 else ""))
     emit(lines)
     return 0

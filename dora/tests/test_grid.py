@@ -196,7 +196,10 @@ def test_plan_reports_stale_experiments(tmpdir, capsys):
             grid_module._get_explore = original
 
         out = capsys.readouterr().out
-        assert "would be CANCELLED" in out
+        # The fake shepherd reports no live job, so these are finished
+        # experiments: dropped from the grid, not cancelled.
+        assert "would be dropped from the grid" in out
+        assert "would be CANCELLED" not in out
         assert "1 new" in out
 
 
