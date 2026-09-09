@@ -40,9 +40,9 @@ class NamesMixin:
     def get_name(self, xp: XP) -> str:
         """Returns the XP name.
         """
-        if xp.delta is None:
-            # Loaded from disk without a persisted delta, so there is nothing to
-            # build a name out of. The signature is the one thing always true.
+        if not self.get_name_parts(xp):
+            # Nothing to build a name out of -- an XP loaded from disk with no
+            # persisted delta, say. The signature is the one thing always true.
             return xp.sig
         return self.get_names([xp])[-1]
 
@@ -74,13 +74,9 @@ class NamesMixin:
 
         names = []
         for xp, parts in zip(xps, all_xp_parts):
-            if xp.delta is None:
-                # An XP loaded from disk that predates the persisted delta: its
-                # name is unrecoverable, so fall back to the one thing that is
-                # always true about it.
-                names.append(xp.sig)
-            else:
-                names.append(self._get_short_name(parts, reference))
+            # With no parts at all there is nothing to name it by; the signature
+            # is the one thing always true about an experiment.
+            names.append(self._get_short_name(parts, reference) if parts else xp.sig)
 
         base_name = self._get_short_name(reference)
         return names, base_name

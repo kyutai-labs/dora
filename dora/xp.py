@@ -167,3 +167,23 @@ def get_xp() -> XP:
 def is_xp() -> bool:
     """Return True if running within an XP."""
     return bool(_context._xps)
+
+
+def load_xp(dora: "DoraConfig", sig: str) -> XP:
+    """Read an experiment straight from its folder.
+
+    The counterpart to `DecoratedMain.get_existing_xp_from_sig` for callers that
+    have a `DoraConfig` but do not want to import the project to get one. The
+    signature is taken as given -- the folder name is the ground truth -- and
+    `cfg` is left as None, since loading it is main-specific.
+    """
+    xp = XP(dora=dora, cfg=None, argv=[], sig=sig)
+    if xp._argv_cache.exists():
+        xp.argv = json.load(open(xp._argv_cache))
+    elif xp._shared_argv_cache is not None and xp._shared_argv_cache.exists():
+        xp.argv = json.load(open(xp._shared_argv_cache))
+    else:
+        raise RuntimeError(f"Could not find experiment with signature {sig}")
+    if xp._delta_cache.exists():
+        xp.delta = json.load(open(xp._delta_cache))
+    return xp

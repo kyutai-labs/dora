@@ -23,7 +23,7 @@ import sys
 
 from .conf import DoraConfig, SlurmConfig
 from .names import NamesMixin
-from .xp import XP, _context
+from .xp import XP, load_xp, _context
 
 
 MainFun = tp.Callable
@@ -180,14 +180,7 @@ class DecoratedMain(NamesMixin):
         for experiments created before it was persisted, which costs their name
         but nothing else.
         """
-        argv = list(self.get_argv_from_sig(sig))
-        xp = XP(dora=self.dora, cfg=None, argv=argv, sig=sig)
-        if xp._delta_cache.exists():
-            # Left as the JSON gives it: `XP.__init__` runs the delta through
-            # `jsonable`, which turns the pairs into lists, so loading them back
-            # as tuples would not round-trip. Both serialize identically, so the
-            # signature is unaffected either way.
-            xp.delta = json.load(open(xp._delta_cache))
+        xp = load_xp(self.dora, sig)
         xp.cfg = self._load_existing_cfg(xp)
         return xp
 

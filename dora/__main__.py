@@ -13,11 +13,12 @@ import argparse
 
 from .grid import grid_action
 from .info import info_action
+from . import inspect as _inspect
 from .launch import launch_action
 from .log import fatal, setup_logging, simple_log
 from .run import run_action
 from .share import import_action, export_action
-from ._utils import get_main
+from ._utils import get_dora_config, get_main
 
 
 def add_submit_rules(parser):
@@ -143,6 +144,48 @@ def get_parser():
     export.add_argument("sigs", nargs='*', help='All the XP sigs to export.')
     export.set_defaults(action=export_action)
 
+    # Read-only inspection. These never import the training package when a
+    # dora.toml supplies the experiment directory, and their output is capped
+    # and uncoloured so it is cheap to read programmatically.
+    def add_inspect(name, help_text, targets_help):
+        sub = subparsers.add_parser(name, help=help_text)
+        sub.add_argument("targets", nargs="+", help=targets_help)
+        sub.add_argument("--json", action="store_true",
+                         help="Emit one compact JSON object instead of a table.")
+        sub.add_argument("--limit", type=int, default=None,
+                         help="Maximum rows or lines to show.")
+        sub.set_defaults(read_only=True)
+        return sub
+
+    status = add_inspect(
+        "status", "Compact state of experiments or a whole grid.",
+        "Signatures, grid names or Slurm job ids. Prefix with @ to force a signature.")
+    status.add_argument("--keys", default=None,
+                        help="Comma separated metrics to show instead of the defaults.")
+    status.set_defaults(action=_inspect.status_action)
+
+    metrics = add_inspect(
+        "metrics", "Downsampled metric history for one experiment.", "A signature.")
+    metrics.add_argument("--stage", default=None, help="Stage, e.g. train or valid.")
+    metrics.add_argument("--keys", default=None, help="Comma separated metrics to show.")
+    metrics.add_argument("--every", type=int, default=None,
+                         help="Keep one epoch out of every N, across the whole run.")
+    metrics.set_defaults(action=_inspect.metrics_action)
+
+    log = add_inspect("log", "Tail an experiment's log, stripped of colour.",
+                      "A signature, grid name or job id.")
+    log.add_argument("--tail", type=int, default=None, dest="limit",
+                     help="Number of lines to show (same as --limit).")
+    log.add_argument("--grep", default=None, help="Only lines matching this regexp.")
+    log.add_argument("--rank", type=int, default=None, help="Restrict to one rank.")
+    log.add_argument("--job", default=None, help="Look at this job id's logs.")
+    log.set_defaults(action=_inspect.log_action)
+
+    why = add_inspect("why", "Explain why an experiment failed.",
+                      "A signature, grid name or job id.")
+    why.add_argument("--job", default=None, help="Look at this job id's logs.")
+    why.set_defaults(action=_inspect.why_action)
+
     return parser
 
 
@@ -154,6 +197,18 @@ def main():
 
     if args.action is None:
         fatal("You must give an action.")
+
+    if getattr(args, "read_only", False):
+        # These only need to know where experiments live. Importing the training
+        # package to find that out costs seconds on a real project, so use
+        # dora.toml when it can answer, and say so when it cannot.
+        dora = get_dora_config()
+        if dora is None:
+            simple_log("Dora", "No dora.toml with a resolvable `dir`; "
+                               "importing the training package to find it "
+                               "(this is the slow path).")
+            dora = get_main(args.main_module, args.package).dora
+        return args.action(args, dora)
 
     main = get_main(args.main_module, args.package)
 
