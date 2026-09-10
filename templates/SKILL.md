@@ -15,18 +15,29 @@ that signature, by a grid name, or by a Slurm job id.
 dora status <grid|sig|jobid>...     # one line per experiment
 dora metrics <sig> [--every 20]     # downsampled history
 dora log <sig> [--tail 40] [--grep] # log, decoloured
-dora why <sig>                      # what killed it
+dora why <sig> [--job ID]           # what killed it
 ```
 
-All four are read-only. Because their output is not going to a terminal, they
-default to a capped, uncoloured rendering; `--json` gives one object instead,
-and `--pretty` the colourised form a person would want. They are the right tool
-because the alternatives are enormous: a real `history.json` is hundreds of KB,
-a `solver.log.*` is megabytes and full of ANSI escapes, and `dora grid` prints a
-wrapped treetable that costs tens of KB to say what `dora status` says in two.
+These only read -- nothing is scheduled or cancelled -- with one exception,
+`dora status --cancel` / `--restart`, described below. Because their output is
+not going to a terminal, they default to a capped, uncoloured rendering;
+`--json` gives one object instead, and `--pretty` the colourised form a person
+would want. They are the right tool because the alternatives are enormous: a
+real `history.json` is hundreds of KB, a `solver.log.*` is megabytes and full of
+ANSI escapes, and `dora grid` prints a wrapped treetable that costs tens of KB
+to say what `dora status` says in two.
 
 **Do not `cat` anything under the experiment directory.** If you find yourself
 wanting to, the answer is a flag on one of the commands above.
+
+Useful narrowing: `--keys a,b` chooses metric columns, `--limit` raises or
+lowers the row cap, `--every N` downsamples a long history, and `why --job ID`
+or `--attempts N` looks further back through earlier attempts.
+
+A `?` in the state column means Slurm has no record of the job. Accounting
+databases get reset periodically, after which everything older reports `?` and
+job ids start again from a low number -- so a larger id does not mean a later
+job.
 
 Start with `dora why` when something failed; fall back to `dora log --grep` only
 if it reports no known signature.
@@ -93,6 +104,24 @@ xp.folder, xp.argv, xp.delta, xp.cfg
 
 Prefer `get_existing_xp_from_sig`. `main.get_xp_from_argv` does not exist -- the
 function is `main.get_xp(argv)`.
+
+## Acting on experiments that already exist
+
+`dora status` can also cancel or restart what it selects, without evaluating
+any grid file:
+
+```bash
+dora status <target> --cancel --dry-run    # preview: nothing changes
+dora status <target> --cancel              # cancel the latest jobs and dependents
+dora status <target> --restart             # resubmit from the saved argv and
+                                           #   slurm config, keeping checkpoints
+```
+
+Note `--dry-run` here, against `--dry_run` for `dora grid`. `--restart` needs
+the Slurm snapshot a launch writes, so an experiment last run before that
+existed cannot be restarted this way; relaunch it through its grid instead.
+
+Both change the cluster, so treat them like `dora grid`: only when asked.
 
 ## Do not do these
 
