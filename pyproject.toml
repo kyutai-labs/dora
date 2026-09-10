@@ -47,6 +47,10 @@ path = "dora/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dora"]
+exclude = [
+    "dora/parser/*.json",
+    "dora/parser/omegaconf_profile",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -61,6 +65,8 @@ include = [
     "setup.cfg",
 ]
 exclude = [
+    "dora/parser/*.json",
+    "dora/parser/omegaconf_profile",
     "examples/outputs",
     "examples/outputs_complex",
     "examples/outputs_pl",

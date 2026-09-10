@@ -148,7 +148,8 @@ def collect_grid(source, main, checkpoints):
         )
 
     tree = ast.parse(source)
-    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "explorer"]
+    functions = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "explorer"]
     if len(functions) != 1:
         raise ValueError("Expected one explorer function")
     function = functions[0]
@@ -205,7 +206,7 @@ if backend == 'hydra':
     with initialize_config_dir(root, version_base='1.1'):
         cfg = compose('config', args)
 else:
-    from dora_parser import ConfigParser
+    from dora.parser import ConfigParser
     parser = ConfigParser(root)
     cfg = parser.compose_config(args) if backend == 'omegaconf' else parser.compose(args)
 print((time.perf_counter() - started) * 1000)
@@ -258,7 +259,7 @@ def audit_configs(config_dir):
 def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
     import hydra
     import omegaconf
-    import yaml
+    import yaml  # type: ignore[import-untyped]
     from omegaconf import OmegaConf
 
     with tempfile.TemporaryDirectory(prefix="dora-parser-") as temporary:
@@ -314,7 +315,8 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
         cold = {}
         for backend in ("hydra", "dict", "omegaconf"):
             cold[backend] = cold_process(config_dir, rows[0], backend, cold_repeat)
-            print(f"fresh process import + compose ({backend}): {cold[backend]['median_ms']:.3f} ms", flush=True)
+            print(f"fresh process import + compose ({backend}): "
+                  f"{cold[backend]['median_ms']:.3f} ms", flush=True)
         return {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "source": str(audium),
@@ -335,7 +337,8 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
             "fresh_process_import_and_compose": cold,
             "input_sha256": digests,
             "argv": rows,
-            "method": "Temporary snapshot; simulated checkpoint absence/presence; no training imports. "
+            "method": "Temporary snapshot; simulated checkpoint absence/presence; "
+                      "no training imports. "
                       "Warm timings include default cache dependency stat checks. "
                       "Fresh instance includes YAML loading; fresh process includes imports "
                       "but excludes interpreter startup. "
@@ -351,9 +354,11 @@ def main():
     parser.add_argument("--grid", default="arflow.phonon1_fast2_langs")
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--cold-repeat", type=int, default=3)
-    parser.add_argument("--xp-root", help="Experiment path used to construct hypothetical continuation overrides")
+    parser.add_argument("--xp-root",
+                        help="Experiment path used for hypothetical continuation overrides")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--audit-solvers", action="store_true", help="Also compare all YAML and solver choices")
+    parser.add_argument("--audit-solvers", action="store_true",
+                        help="Also compare all YAML and solver choices")
     args = parser.parse_args()
     if args.repeat < 1 or args.cold_repeat < 1:
         parser.error("repeat counts must be positive")

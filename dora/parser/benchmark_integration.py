@@ -64,7 +64,7 @@ def run():
                             "enables the same TOML flag. Read-only Audium snapshot; simulated "
                             "checkpoint branches; no training or scheduling."}
     destination = Path(__file__).with_name("integration_results.json")
-    destination.write_text(json.dumps(result, indent=2) + "\\n")
+    destination.write_text(json.dumps(result, indent=2) + "\n")
     return result
 
 

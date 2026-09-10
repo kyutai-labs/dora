@@ -1,9 +1,8 @@
-# dora_parser (experimental)
+# dora.parser
 
-The implementation now lives in `dora.parser` and ships with Dora.
-Enable it with `[project] use_fast_parser = true` in `dora.toml` (false by
-default). This folder retains benchmark/profile scripts, historical reports,
-and compatibility imports. See the root README for integration details.
+Dora's fast config parser, benchmark tools, and profiling reports live here.
+Enable the parser with `[project] use_fast_parser = true` in `dora.toml`
+(false by default). See the root README for integration details.
 
 The dictionary API needs Python 3.11+ and PyYAML. It does not import Hydra,
 OmegaConf, or ANTLR. PyYAML uses libyaml when available and otherwise falls back
@@ -16,7 +15,7 @@ Run from the Dora checkout using its existing environment, without syncing
 dependencies:
 
 ~~~python
-from dora_parser import ConfigParser
+from dora.parser import ConfigParser
 
 parser = ConfigParser("/data/home/alex/projs/audium3/config")
 overrides = [
@@ -39,7 +38,7 @@ There is also a one-shot helper:
 Reuse a ConfigParser instance to benefit from caching across a grid.
 
 ~~~bash
-uv run --no-sync python -B -m dora_parser \
+uv run --no-sync python -B -m dora.parser \
   --config-dir /data/home/alex/projs/audium3/config \
   solver=arflow/tts2 dataset.batch_size=48
 ~~~
@@ -150,19 +149,19 @@ Raw results are generated locally in `group_base_cache_results.json` and ignored
 by Git. Reproduce:
 
 ~~~bash
-uv run --no-sync python -B -m dora_parser.benchmark \
-  --repeat 3 --cold-repeat 3 --output dora_parser/group_base_cache_results.json
+uv run --no-sync python -B -m dora.parser.benchmark \
+  --repeat 3 --cold-repeat 3 --output dora/parser/group_base_cache_results.json
 ~~~
 
 ## Verification and speed
 
 ~~~bash
 uv run --no-sync python -B -m pytest dora/tests/parser -q -p no:cacheprovider
-uv run --no-sync python -B -m flake8 dora_parser --max-line-length 120
-uv run --no-sync python -B -m dora_parser.benchmark \
+uv run --no-sync python -B -m flake8 dora/parser
+uv run --no-sync python -B -m dora.parser.benchmark \
   --audium /data/home/alex/projs/audium3 \
   --audit-solvers --repeat 3 --cold-repeat 3 \
-  --output dora_parser/benchmark_results.json
+  --output dora/parser/benchmark_results.json
 ~~~
 
 The benchmark snapshots YAML, the target grid, and dora.toml into a temporary
@@ -229,7 +228,7 @@ The prototype is an independent implementation; it does not vendor Hydra.
 
 ## Integrated benchmark
 
-Run `uv run --no-sync python -B -m dora_parser.benchmark_integration` to exercise
+Run `uv run --no-sync python -B -m dora.parser.benchmark_integration` to exercise
 the actual HydraMain constructor and opt-in path. It generates the Git-ignored
 `integration_results.json`. The verification run recorded in this report
 matched all 20 unique grid experiments (including

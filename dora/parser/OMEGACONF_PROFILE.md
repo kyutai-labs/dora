@@ -115,7 +115,7 @@ above use existing configs, whereas this path constructs fresh ones.
 ## Reproduce
 
 ```bash
-uv run --no-sync python -B -m dora_parser.profile_omegaconf
+uv run --no-sync python -B -m dora.parser.profile_omegaconf
 ```
 
 The runner snapshots configs and the grid into a temporary directory and

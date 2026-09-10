@@ -98,7 +98,8 @@ def pipeline_components(main, rows, repeat):
         return wrapper
 
     with patch.object(main, "_get_config", timed("experiment_config", main._get_config)), \
-            patch.object(main, "_get_base_config", timed("group_base_config", main._get_base_config)), \
+            patch.object(main, "_get_base_config",
+                         timed("group_base_config", main._get_base_config)), \
             patch.object(main, "_get_delta", timed("compare_configs", main._get_delta)):
         start = perf_counter()
         for _ in range(repeat):
@@ -107,7 +108,8 @@ def pipeline_components(main, rows, repeat):
         elapsed = perf_counter() - start
     totals["other"] = elapsed - sum(totals.values())
     return {
-        name: {"mean_ms_per_config": 1000 * value / (repeat * len(rows)), "percent": 100 * value / elapsed}
+        name: {"mean_ms_per_config": 1000 * value / (repeat * len(rows)),
+               "percent": 100 * value / elapsed}
         for name, value in totals.items()
     }
 
@@ -143,8 +145,10 @@ def run(args):
             "set_struct": (lambda cfg: OmegaConf.set_struct(cfg, True), configs),
             "deepcopy_dict": (deepcopy, raw),
             "deepcopy_dictconfig": (deepcopy, configs),
-            "to_container_unresolved": (lambda cfg: OmegaConf.to_container(cfg, resolve=False), configs),
-            "to_container_resolved": (lambda cfg: OmegaConf.to_container(cfg, resolve=True), configs),
+            "to_container_unresolved": (
+                lambda cfg: OmegaConf.to_container(cfg, resolve=False), configs),
+            "to_container_resolved": (
+                lambda cfg: OmegaConf.to_container(cfg, resolve=True), configs),
             "delta_existing_configs": (compare, pairs),
             "get_xp": (main.get_xp, rows),
         }
@@ -174,13 +178,15 @@ def run(args):
                              OmegaConf.to_container(reference.cfg, resolve=True))
             caching = time_stages({"get_xp_reuse_group_base": (main.get_xp, rows)}, args.repeat)
         timings.update(caching)
-        print(f"get_xp_reuse_group_base: {timings['get_xp_reuse_group_base']['median_ms_per_config']:.4f} ms/config",
+        cached_ms = timings["get_xp_reuse_group_base"]["median_ms_per_config"]
+        print(f"get_xp_reuse_group_base: {cached_ms:.4f} ms/config",
               flush=True)
 
         profiles = {}
         for name in ("omegaconf_create", "delta_existing_configs", "get_xp"):
             fn, inputs = stages[name]
-            profiles[name] = profile_stage(fn, inputs, args.profile_repeat, destination / f"{name}.prof")
+            profiles[name] = profile_stage(
+                fn, inputs, args.profile_repeat, destination / f"{name}.prof")
             print(f"Profile saved: {name}", flush=True)
 
         shapes = [shape(value) for value in raw]
@@ -196,12 +202,16 @@ def run(args):
             "unique_group_bases": len(cache),
             "timings": timings, "get_xp_components": components, "profiles": profiles,
             "input_sha256": digests,
-            "method": "Temporary config snapshot; recorded explorer and synthetic checkpoints; no training import. "
+            "method": "Temporary config snapshot; recorded explorer and synthetic checkpoints; "
+                      "no training import. "
                       "Wall timings are unprofiled medians of shuffled batches after warmup. "
-                      "cProfile self times/call counts locate hotspots; cumulative times overlap and "
+                      "cProfile self times/call counts locate hotspots; "
+                      "cumulative times overlap and "
                       "profiling overhead means profiled milliseconds are not production timings. "
-                      "The group-base reuse control patches only the benchmark instance and checks all 20 outputs. "
-                      "Lookup-only stages use existing warmed DictConfigs; complete get_xp constructs fresh ones.",
+                      "The group-base reuse control patches only the benchmark instance "
+                      "and checks all 20 outputs. "
+                      "Lookup-only stages use existing warmed DictConfigs; "
+                      "complete get_xp constructs fresh ones.",
         }
         (destination / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -213,7 +223,7 @@ def main():
     parser.add_argument("--grid", default="arflow.phonon1_fast2_langs")
     parser.add_argument("--repeat", type=int, default=7)
     parser.add_argument("--profile-repeat", type=int, default=3)
-    parser.add_argument("--output-dir", type=Path, default=Path("dora_parser/omegaconf_profile"))
+    parser.add_argument("--output-dir", type=Path, default=Path("dora/parser/omegaconf_profile"))
     args = parser.parse_args()
     if min(args.repeat, args.profile_repeat) < 1:
         parser.error("repeat counts must be positive")
