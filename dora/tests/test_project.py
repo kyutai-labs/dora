@@ -161,3 +161,17 @@ def test_dora_config_without_dir_still_carries_exclusions(tmp_path, monkeypatch)
 def test_no_dora_section_yields_no_config(tmp_path):
     write(tmp_path, '[project]\npackage = "proj"\n')
     assert project.load(tmp_path).dora_config(require_dir=False) is None
+
+
+@pytest.mark.parametrize("setting, expected", [("", False), ("false", False), ("true", True)])
+def test_fast_parser_flag(tmp_path, setting, expected):
+    option = f"use_fast_parser = {setting}\n" if setting else ""
+    write(tmp_path, "[project]\n" + option)
+    assert project.load(tmp_path).use_fast_parser is expected
+
+
+@pytest.mark.parametrize("value", ['"true"', '"false"', "1", "[]"])
+def test_fast_parser_flag_requires_boolean(tmp_path, value):
+    write(tmp_path, f"[project]\nuse_fast_parser = {value}\n")
+    with pytest.raises(project.ProjectConfigError, match="use_fast_parser must be a boolean"):
+        project.load(tmp_path)

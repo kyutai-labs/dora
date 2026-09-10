@@ -18,7 +18,7 @@ output cheap to read: fixed-width columns, no colour, hard caps with an explicit
 marker when something was cut, and `--json` for anything that wants to
 post-process. Diagnostics go to stderr so stdout stays parseable.
 
-None of these commands import the project when a `dora.toml` supplies the
+Read-only invocations do not import the project when a `dora.toml` supplies the
 experiment directory -- see `dora.project`.
 """
 from collections import OrderedDict
@@ -457,6 +457,9 @@ def _xp_names(dora: DoraConfig,
 
 
 def status_action(args: tp.Any, dora: DoraConfig) -> int:
+    if getattr(args, "cancel", False) or getattr(args, "restart", False):
+        from .manage import status_action as manage_status
+        return manage_status(args, dora)
     resolution = resolve_targets(args.targets, dora)
     for problem in resolution.problems:
         note(f"warning: {problem}")

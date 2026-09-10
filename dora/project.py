@@ -108,6 +108,10 @@ class ProjectConfig:
         self.main_module: tp.Optional[str] = project.get("main_module")
         self.config_path: tp.Optional[str] = project.get("config_path")
         self.config_name: tp.Optional[str] = project.get("config_name")
+        self.use_fast_parser: bool = project.get("use_fast_parser", False)
+        if not isinstance(self.use_fast_parser, bool):
+            raise ProjectConfigError(
+                f"{path}: [project] use_fast_parser must be a boolean (true or false)")
         self.hydra_kwargs: dict = project.get("hydra", {})
         self._dora: dict = raw.get("dora", {})
 

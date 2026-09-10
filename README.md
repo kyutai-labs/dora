@@ -692,6 +692,7 @@ main_module = "train"
 config_path = "config"     # Hydra projects
 config_name = "config"
 hydra       = { version_base = "1.1" }
+use_fast_parser = false   # opt in to the filesystem config parser
 
 [dora]
 dir      = "${env:MY_XP_ROOT}"
@@ -859,3 +860,71 @@ Dora is released under the MIT license as found in the [LICENSE](LICENSE) file.
 ## Contributing
 
 Before submitting any change, please run `make` to run unit tests and code linting.
+
+
+### Fast config parser (opt in)
+
+Set this in your project's existing `dora.toml`:
+
+```toml
+[project]
+use_fast_parser = true
+```
+
+The default is `false`. Keep your existing `@hydra_main(...)` decorator.
+With the flag enabled, `dora.parser` composes configs and runs the task without
+importing Hydra. Training still receives a mutable OmegaConf `DictConfig` with
+lazy interpolation and struct mode.
+
+The supported subset includes filesystem YAML groups, nested defaults,
+`_self_`, optional defaults, package relocation, and ordinary scalar/list/dict
+overrides (including `+` and `++`). It preserves Dora's existing group deltas
+and experiment signatures. The standalone parser also handles deletion syntax;
+Dora's existing delta rules still require each experiment to retain its base keys.
+Hydra plugins, ConfigStore schemas, search paths, runtime `hydra:` settings,
+interpolated defaults, and multirun are unsupported; use the default backend
+for those. Hydra-specific command-line switches are rejected.
+
+Group bases are cached **in memory**, per decorated main, with at most 32 group
+combinations. Files are checked for changes on reuse. Cached DictConfigs are
+read-only; each experiment receives its own mutable config. There is no cache
+file. For direct composition, use `from dora.parser import ConfigParser`;
+`parser.clear_cache()` clears both parsed files and group bases.
+
+The fast execution path saves unresolved `.hydra/config.yaml` and
+`.hydra/overrides.yaml` on rank zero, and logs to the console and
+`<entrypoint>.log` in the XP folder. It preserves the decorator's
+working-directory default: absent `version_base` or `"1.1"` changes to the XP
+folder, while `None` or `"1.2"`/`"1.3"` keeps the working directory.
+Use `dora.to_absolute_path()` for paths relative to the original directory.
+It does not initialize HydraConfig or produce `.hydra/hydra.yaml`.
+
+### Restarting an existing experiment
+
+Every successful Slurm submission saves the complete Dora `SlurmConfig` in
+`<xp>/slurm.json`. This includes parameters set by the grid, such as GPUs,
+partition, time, setup commands, Python executable, and dependent jobs. It is
+replaced on the next successful launch, including launches in a job array;
+a failed submission leaves the previous snapshot in place.
+
+```bash
+dora status <sig> --cancel
+dora status <sig> --restart --dry-run
+dora status <sig> --restart
+```
+
+These actions also accept multiple signatures, job IDs, or a grid name.
+Grid names expand from saved membership links; no grid is evaluated. `--limit`
+limits displayed results only. Add `--json` for structured output.
+
+Cancellation uses recorded job IDs without importing training. It includes
+dependent jobs and leaves other members of an array alone. Restart uses saved
+`.argv.json` and `slurm.json`, cancels an existing active attempt, and submits
+the selected experiment again, preserving its folder and checkpoints. Older
+experiments can fall back to `job.json`'s `slurm_config` field.
+
+Restart imports the current training entry point and composes only the selected
+experiments, using the current code/configs and normal `git_save` behavior.
+It refuses to proceed if the saved arguments now produce a different signature
+or experiment folder, or if launch settings are missing. Plain `dora status`
+remains read-only.

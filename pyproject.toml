@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "omegaconf",
+    "pyyaml",
     "submitit",
     "treetable",
     "torch",

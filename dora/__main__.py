@@ -169,6 +169,15 @@ def get_parser():
         "Signatures, grid names or Slurm job ids. Prefix with @ to force a signature.")
     status.add_argument("--keys", default=None,
                         help="Comma separated metrics to show instead of the defaults.")
+    changes = status.add_mutually_exclusive_group()
+    changes.add_argument("--cancel", action="store_true",
+                         help="Cancel the selected XPs' latest jobs and dependents.")
+    changes.add_argument("--restart", action="store_true",
+                         help="Restart selected XPs using saved argv and slurm.json, "
+                              "without evaluating their grid. Keeps checkpoints.")
+    status.add_argument("--dry-run", action="store_true",
+                        help="Validate and preview --cancel or --restart without changing jobs. "
+                             "--limit only limits output, not the selected experiments.")
     status.set_defaults(action=_inspect.status_action)
 
     metrics = add_inspect(
@@ -247,6 +256,9 @@ def get_parser():
 def main():
     parser = get_parser()
     args = parser.parse_args()
+    if (getattr(args, "dry_run", False) and args.command == "status"
+            and not (args.cancel or args.restart)):
+        parser.error("status --dry-run requires --cancel or --restart")
 
     setup_logging(args.verbose)
 
@@ -281,4 +293,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

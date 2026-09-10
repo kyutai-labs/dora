@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 import importlib.util
 import logging
 import os
@@ -161,6 +162,23 @@ def assign_clone(xp: XP, clone: Path):
     code.symlink_to(clone)
 
 
+_run_cwd: ContextVar[tp.Optional[Path]] = ContextVar("dora_run_cwd", default=None)
+
+
+@contextmanager
+def enter_run_dir(folder: tp.Optional[Path]):
+    """Keep relative user paths anchored while the fast backend runs an XP."""
+    cwd = Path.cwd()
+    token = _run_cwd.set(cwd)
+    try:
+        if folder is not None:
+            os.chdir(folder)
+        yield
+    finally:
+        os.chdir(cwd)
+        _run_cwd.reset(token)
+
+
 AnyPath = tp.TypeVar("AnyPath", str, Path)
 
 
@@ -188,6 +206,9 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
         # matters because `DoraConfig.__setattr__` calls this on every `dir`
         # assignment, so importing Hydra here would put it back on the path of
         # anything that merely constructs a config.
+        run_cwd = _run_cwd.get()
+        if run_cwd is not None:
+            return klass(_path if _path.is_absolute() else run_cwd / _path)
         hydra_utils = sys.modules.get('hydra.utils')
         if hydra_utils is None:
             if not _path.is_absolute():

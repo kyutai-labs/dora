@@ -79,14 +79,11 @@ def __getattr__(name: str):
     through `dora.distrib` it imported torch. Almost nothing that touches Dora
     needs either -- reading experiment metadata certainly does not -- so the
     Hydra entry point is now resolved only when someone actually asks for it.
+    Hydra itself is imported only after selecting the default backend; the
+    opt-in fast parser can use the same decorator without Hydra installed.
     `import dora.hydra` and `from dora import hydra_main` both keep working.
     """
     if name == "hydra_main":
-        try:
-            import hydra  # noqa: F401
-        except ImportError:
-            raise AttributeError(
-                "dora.hydra_main requires Hydra, which is not installed.") from None
         from .hydra import hydra_main
         return hydra_main
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

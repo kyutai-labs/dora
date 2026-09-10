@@ -31,7 +31,7 @@ from . import git_save
 from .conf import SlurmConfig, SubmitRules
 from .log import disable_logging, setup_logging
 from .main import DecoratedMain
-from .utils import try_load
+from .utils import jsonable, try_load, write_and_rename
 from .xp import XP, _get_sig, get_xp
 
 
@@ -259,9 +259,11 @@ class Shepherd:
             no bookkeeping folders are created and the orphan check -- which can
             cancel Slurm jobs -- is skipped. Use this whenever you only intend to
             look at job state. Submitting from a read-only Shepherd is refused.
+        check_orphans (bool): recover orphaned submissions on startup. Disable this
+            for operations explicitly targeting existing experiments.
     """
     def __init__(self, main: DecoratedMain, log: tp.Callable[[str], None] = no_log,
-                 read_only: bool = False):
+                 read_only: bool = False, check_orphans: bool = True):
         self.main = main
         self.read_only = read_only
         if not read_only:
@@ -275,7 +277,7 @@ class Shepherd:
         self._to_cancel: tp.List[submitit.SlurmJob] = []
         self._to_submit: tp.List[_JobArray] = []
 
-        if not read_only:
+        if not read_only and check_orphans:
             # Cancels jobs left behind by a Dora that crashed mid-submit, so it
             # must never run for a caller that is only reading.
             self._check_orphans()
@@ -411,7 +413,7 @@ class Shepherd:
     def _get_submitit_executor(self, name: str, folder: Path,
                                slurm_config: SlurmConfig) -> submitit.SlurmExecutor:
         os.environ['SLURM_KILL_BAD_EXIT'] = '1'  # Kill the job if any of the task fails
-        kwargs = dict(slurm_config.__dict__)
+        kwargs = asdict(slurm_config)
         import submitit
         executor = submitit.SlurmExecutor(
             folder=folder, max_num_timeout=kwargs.pop('max_num_timeout'),
@@ -498,6 +500,11 @@ class Shepherd:
         if not sheeps:
             return
 
+        # Validate serialization before submitting anything. Each successful launch
+        # replaces this snapshot; failed submissions leave the previous one intact.
+        saved_slurm = jsonable(asdict(slurm_config))
+        slurm_json = json.dumps(saved_slurm, indent=2) + "\n"
+
         is_array = len(sheeps) > 1
         first = sheeps[0]
         self.main.init_xp(first.xp)
@@ -570,10 +577,13 @@ class Shepherd:
                     'job_id': job.job_id,
                     'array_job_ids': [other_job.job_id for other_job in jobs],
                     'dependent_job_ids': [other_job.job_id for other_job in dependent_jobs],
-                    'slurm_config': asdict(slurm_config),
+                    'slurm_config': saved_slurm,
 
                 }
-                sheep._json_job_file.write_text(json.dumps(job_info_for_json))
+                with write_and_rename(sheep.xp.folder / "slurm.json", "w") as file:
+                    file.write(slurm_json)
+                with write_and_rename(sheep._json_job_file, "w") as file:
+                    json.dump(job_info_for_json, file)
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
                 pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
                 logger.debug("Created job with id %s", job.job_id)

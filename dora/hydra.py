@@ -17,10 +17,6 @@ import sys
 import typing as tp
 from unittest import mock
 
-import hydra
-from hydra.core.global_hydra import GlobalHydra
-from hydra import compose, initialize_config_dir  # type: ignore
-
 from omegaconf.dictconfig import DictConfig
 
 from .conf import DoraConfig, SlurmConfig, update_from_hydra
@@ -127,6 +123,7 @@ def _hydra_value_as_override(value):
 
 class HydraMain(DecoratedMain):
     _slow = True
+    use_fast_parser = False
 
     def __init__(self, main: MainFun, config_name: str, config_path: str, **kwargs):
         self.config_name = config_name
@@ -152,6 +149,15 @@ class HydraMain(DecoratedMain):
         self.full_config_path = Path(module_path).parent.resolve()
         if config_path is not None:
             self.full_config_path = self.full_config_path / config_path
+
+        from . import project
+        conf = project.load()
+        self.use_fast_parser = conf.use_fast_parser if conf is not None else False
+        if self.use_fast_parser:
+            from .parser import ConfigParser
+            from .parser.runtime import chdir_for_version
+            self._fast_chdir = chdir_for_version(kwargs)
+            self._parser = ConfigParser(self.full_config_path, self.config_name)
 
         self._initialized = False
         self._base_cfg = self._get_config()
@@ -264,6 +270,12 @@ class HydraMain(DecoratedMain):
         return parts
 
     def _main(self):
+        if self.use_fast_parser:
+            from .parser.runtime import run
+            return run(self.main, get_xp(), self._job_name, chdir=self._fast_chdir)
+
+        import hydra
+        from hydra.core.global_hydra import GlobalHydra
         # Imported here rather than at module scope: `dora.distrib` pulls in torch
         # (~1.5s), and this is the only place in `dora.hydra` that needs it. Keeping
         # it out of the import graph is what makes `import dora` cheap.
@@ -294,6 +306,11 @@ class HydraMain(DecoratedMain):
         `fast` suppresses Hydra's internal deepcopies; pass False to get the
         unaccelerated answer, which the tests compare against.
         """
+        if self.use_fast_parser:
+            return sorted(path.relative_to(self.full_config_path).as_posix()
+                          for path in self.full_config_path.rglob("*") if path.is_dir())
+        from hydra import initialize_config_dir
+        from hydra.core.global_hydra import GlobalHydra
         with initialize_config_dir(str(self.full_config_path), job_name=self._job_name,
                                    **self.hydra_kwargs):
             gh = GlobalHydra.instance().hydra
@@ -310,6 +327,14 @@ class HydraMain(DecoratedMain):
                 return list(gh.list_all_config_groups())
 
     def _is_active(self, argv: tp.List[str]) -> bool:
+        if self.use_fast_parser:
+            from .parser import UnsupportedFeature
+            for arg in argv:
+                if arg.startswith("-"):
+                    raise UnsupportedFeature(
+                        f"Hydra CLI option {arg!r} requires use_fast_parser = false; "
+                        "the fast parser accepts config overrides only")
+            return True
         if '-m' in argv or '--multirun' in argv:
             return False
         return True
@@ -321,12 +346,26 @@ class HydraMain(DecoratedMain):
         Return base config based on composition, along with delta for the
         composition overrides.
         """
+        if self.use_fast_parser:
+            # Keep Dora's existing group delta semantics, including argument order.
+            to_keep = []
+            delta: tp.List[tp.Tuple[str, str]] = []
+            for arg in overrides:
+                group, _, value = arg.partition("=")
+                if group in self._config_groups:
+                    to_keep.append(arg)
+                    delta = [(g, v) for g, v in delta if g != group]
+                    delta.append((group, value))
+            return self._parser.compose_base_config(to_keep), delta
+
+        from hydra import initialize_config_dir
+        from hydra.core.global_hydra import GlobalHydra
         with initialize_config_dir(str(self.full_config_path), job_name=self._job_name,
                                    **self.hydra_kwargs):
             gh = GlobalHydra.instance().hydra
             assert gh is not None
             to_keep = []
-            delta: tp.List[tp.Tuple[str, str]] = []
+            delta = []
             for arg in overrides:
                 for group in self._config_groups:
                     if arg.startswith(f'{group}='):
@@ -345,11 +384,15 @@ class HydraMain(DecoratedMain):
         Internal method, returns the config for the given override,
         but without the dora.sig field filled.
         """
+        if self.use_fast_parser:
+            return self._parser.compose_config(overrides)
+        from hydra import initialize_config_dir
         with initialize_config_dir(str(self.full_config_path), job_name=self._job_name,
                                    **self.hydra_kwargs):
             return self._get_config_noinit(overrides)
 
     def _get_config_noinit(self, overrides: tp.List[str] = []) -> DictConfig:
+        from hydra import compose
         return compose(self.config_name, overrides)  # type: ignore
 
     def _get_delta(self, init: DictConfig, other: DictConfig):
@@ -366,6 +409,8 @@ class HydraMain(DecoratedMain):
 def hydra_main(config_name: str, config_path: str, **kwargs):
     """Wrap your main function with this.
     You can pass extra kwargs, e.g. `version_base` introduced in 1.2.
+    Set [project] use_fast_parser = true in dora.toml to use dora.parser
+    for composition and execution without Hydra. The default is false.
     """
     def _decorator(main: MainFun):
         return HydraMain(main, config_name=config_name, config_path=config_path,
