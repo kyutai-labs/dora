@@ -1040,7 +1040,8 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
     # A stale experiment that is still running gets cancelled; one that already
     # finished is only dropped from the grid and keeps its results. Conflating
     # the two would make a harmless edit look alarming.
-    live_stale, done_stale = [], []
+    live_stale: tp.List[str] = []
+    done_stale: tp.List[str] = []
     for sheep in stale:
         (done_stale if sheep.is_done() else live_stale).append(sheep.xp.sig)
 
