@@ -59,6 +59,13 @@ MAX_LINE_CHARS = 400
 MAX_NAME_CHARS = 44
 MAX_TOTAL_CHARS = 8000
 
+# Written into a grid folder by `dora grid`, read back by `dora status`.
+METRIC_SPEC_NAME = ".metrics.json"
+
+# Quantile and index suffixes: `ce_q1`..`ce_q5` are one metric wearing five
+# hats, and letting them take five of four columns says nothing.
+FAMILY_SUFFIX_RE = re.compile(r"(_q\d+|_\d+)$")
+
 SIG_RE = re.compile(r"^[0-9a-f]{8}$")
 JOB_RE = re.compile(r"^\d+(_\d+)?$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -397,13 +404,20 @@ def pick_stage(history: tp.List[dict]) -> tp.Optional[str]:
     return sorted(present)[0] if present else None
 
 
-def summarise(folder: Path, keys: tp.Sequence[str]) -> tp.Tuple[int, dict]:
-    """Epoch count and last metrics, without loading more than needed."""
+def summarise(folder: Path, keys: tp.Sequence[str] = (),
+              prefixed: bool = False) -> tp.Tuple[int, dict]:
+    """Epoch count and last metrics, without loading more than needed.
+
+    With `prefixed`, metrics from every stage are returned as `stage.metric`,
+    which is how an Explorer names them. Otherwise one stage is guessed at and
+    its metrics returned bare -- fine for a single experiment, but it can mix
+    stages across a grid where they logged different ones, which is why the
+    grid path prefers the recorded spec.
+    """
     history = read_json(folder / "history.json")
     if not isinstance(history, list) or not history:
         return 0, {}
-    stage = pick_stage(history)
-    rows = flatten_history(history, stage)
+    rows = flatten_history(history, None if prefixed else pick_stage(history))
     if not rows:
         return len(history), {}
     _, last = rows[-1]
@@ -413,10 +427,15 @@ def summarise(folder: Path, keys: tp.Sequence[str]) -> tp.Tuple[int, dict]:
 
 
 def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
-    """Pick the few metrics worth a column.
+    """Pick the few metrics worth a column, when nothing better is known.
 
-    Preference for the names people actually track, then whatever is left, so a
-    project with unusual metric names still shows something useful.
+    This is the fallback for an experiment with no grid to ask (see
+    `load_metric_spec`). It prefers the names people actually track, then the
+    shortest, so a project with unusual metric names still shows something.
+
+    One family per column: an experiment logging `ce`, `ce_q1` .. `ce_q5` would
+    otherwise spend every column on quantiles of the same number, which is how
+    a real 74-metric experiment ended up showing `ce ce_q1 ce_q2 ce_q3`.
     """
     preferred = ("loss", "ce", "ppl", "nll", "acc", "wer", "reward", "grad_norm")
     seen: tp.List[str] = []
@@ -427,7 +446,68 @@ def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
     ranked = sorted(seen, key=lambda k: (
         min((i for i, p in enumerate(preferred) if p in k.lower()), default=len(preferred)),
         len(k)))
-    return ranked[:limit]
+    chosen: tp.List[str] = []
+    families: tp.Set[str] = set()
+    for key in ranked:
+        family = FAMILY_SUFFIX_RE.sub("", key)
+        if family in families:
+            continue
+        families.add(family)
+        chosen.append(key)
+        if len(chosen) >= limit:
+            break
+    return chosen
+
+
+def metric_spec_columns(explorer: tp.Any) -> tp.List[str]:
+    """The dotted metric names an Explorer displays, e.g. `train.loss`.
+
+    `get_grid_metrics` returns treetable nodes: groups have children, leaves do
+    not, and the path to a leaf is exactly the path into the dict that
+    `process_sheep` returns.
+    """
+    def walk(nodes: tp.Any, prefix: str = "") -> tp.Iterator[str]:
+        for node in nodes or []:
+            name = prefix + str(node.key)
+            children = getattr(node, "groups", None)
+            if children:
+                yield from walk(children, name + ".")
+            else:
+                yield name
+
+    try:
+        return list(walk(explorer.get_grid_metrics()))
+    except (NotImplementedError, AttributeError):
+        return []
+
+
+def save_metric_spec(grid_folder: Path, explorer: tp.Any) -> None:
+    """Record which metrics a grid's Explorer displays.
+
+    `dora grid` has already imported the project to evaluate the grid file, so
+    it is the one place that knows. Writing it down lets `dora status` show the
+    same columns without importing anything, and stops the two commands
+    disagreeing about what is worth looking at.
+    """
+    columns = metric_spec_columns(explorer)
+    if not columns:
+        return
+    try:
+        (grid_folder / METRIC_SPEC_NAME).write_text(
+            json.dumps({"columns": columns}, separators=(",", ":")))
+    except OSError:
+        pass  # a cache; never worth failing a launch over
+
+
+def load_metric_spec(dora: DoraConfig, grid: tp.Optional[str]) -> tp.List[str]:
+    """The columns `dora grid` recorded for this grid, if any."""
+    if not grid:
+        return []
+    payload = read_json(dora.dir / dora._grids / grid / METRIC_SPEC_NAME)
+    if not isinstance(payload, dict):
+        return []
+    columns = payload.get("columns")
+    return [str(c) for c in columns] if isinstance(columns, list) else []
 
 
 # ---------------------------------------------------------------- actions
@@ -481,17 +561,32 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         jobs[target.sig] = (job or {}).get("job_id", "")
     states = job_states(list(jobs.values()))
     names, base_name = _xp_names(dora, shown)
-    keys = [k.strip() for k in args.keys.split(",")] if args.keys else []
+
+    # Prefer the columns `dora grid` recorded for this grid: they are what its
+    # Explorer displays, so the two commands agree, and they are stage-qualified
+    # so a grid whose experiments logged different stages cannot silently mix
+    # them into one column.
+    grids = {t.grid for t in shown if t.grid}
+    spec = load_metric_spec(dora, grids.pop()) if len(grids) == 1 else []
+    # `--keys` filters; the recorded spec only expresses a preference, so the
+    # metrics are read in full and narrowed when the columns are chosen. Doing
+    # it the other way round leaves nothing to fall back to when an Explorer
+    # names columns it derives rather than logs.
+    wanted = [k.strip() for k in args.keys.split(",")] if args.keys else []
+    prefixed = bool(spec)
 
     records = []
     for index, target in enumerate(shown):
-        epoch, metrics = summarise(target.folder, keys)
+        epoch, metrics = summarise(target.folder, wanted, prefixed=prefixed)
         stamp = last_activity(target.folder)
         job_id = jobs[target.sig]
         records.append({
             "index": index,
             "sig": target.sig,
             "name": names.get(target.sig, target.sig),
+            # "?": the job existed once but Slurm has no record of it now.
+            # Accounting databases get reset, which is routine rather than
+            # exceptional, so this is common for anything old.
             "state": states.get(job_id, "-" if not job_id else "?"),
             "job": job_id,
             "epoch": epoch,
@@ -504,8 +599,15 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
                           "experiments": records})
         return 0
 
-    metric_keys = keys or choose_metric_keys([r["metrics"] for r in records],
-                                             4 if not keys else MAX_METRIC_COLS)
+    # A recorded column that no experiment actually logged is noise: an
+    # Explorer may derive it in `process_sheep` from data that is not in the
+    # raw history at all, and a column of dashes is worse than none.
+    present = {k for r in records for k in r["metrics"]}
+    metric_keys = wanted or [k for k in spec if k in present]
+    if not metric_keys:
+        metric_keys = choose_metric_keys([r["metrics"] for r in records],
+                                         cap(4, mode))
+    metric_keys = metric_keys[:cap(MAX_METRIC_COLS, mode)]
     headers = ["#", "sig", "name", "state", "job", "ep", "ping"] + metric_keys
     rows = []
     for record in records:
@@ -533,6 +635,9 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
     lines.append(" | ".join(f"{state.lower()} {count}"
                             for state, count in sorted(tally.items())))
+    if "?" in tally:
+        lines.append("? = Slurm has no record of the job; its accounting "
+                     "database has most likely been reset since it ran.")
     emit(lines, mode=mode)
     return 0
 

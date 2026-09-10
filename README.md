@@ -386,6 +386,20 @@ person at a terminal gets something readable. `NO_COLOR` is honoured. For
 `dora log` follows the same rule for the log's *own* colour: kept when pretty,
 stripped otherwise, and never present in JSON.
 
+### Which metrics `dora status` shows
+
+`dora grid` records the metric columns its Explorer displays into
+`<grid folder>/.metrics.json`, and `dora status` reads them back. That way the
+two commands agree on what is worth looking at, and `status` gets the
+project-specific answer without importing the project. Columns are recorded
+stage-qualified (`valid.ce`), so a grid whose experiments logged different
+stages cannot silently mix them into one column.
+
+For a bare signature, or a grid launched before the file existed, `status`
+falls back to guessing from the last epoch of the history: metrics whose names
+look like the ones people track, one per family, so `ce_q1` .. `ce_q5` do not
+take every column. `--keys a,b` overrides either.
+
 `dora why` recognises out-of-memory, NCCL timeouts, Hydra config errors and Slurm
 step failures, deduplicates across ranks, and falls back to the tail of the newest
 log. For scale, on a 20-XP grid: `dora status` prints ~2.8KB in half a second,

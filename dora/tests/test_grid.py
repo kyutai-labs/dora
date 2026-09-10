@@ -209,3 +209,45 @@ def test_json_grid_output_is_parseable(tmpdir, capsys):
         # share a signature and are one experiment.
         assert len(payload["experiments"]) == 1
         assert {"sig", "state", "metrics"} <= set(payload["experiments"][0])
+
+
+def test_grid_records_its_metric_columns(tmpdir):
+    """`dora grid` is the only place that knows what an Explorer displays,
+    because it is the only place that evaluates the grid file. Writing it down
+    lets `dora status` show the same columns without importing anything."""
+    import json as json_module
+
+    import treetable as tt
+
+    from ..inspect import METRIC_SPEC_NAME, load_metric_spec
+
+    class Metrics(Explorer):
+        def get_grid_metrics(self):
+            return [tt.group("train", [tt.leaf("loss", ".3f")]),
+                    tt.group("valid", [tt.leaf("ce"), tt.leaf("ppl")])]
+
+    with mock_shep():
+        main = get_main(tmpdir)
+        run_grid(main, Metrics(explore_1), "unittest_spec",
+                 slurm=main.get_slurm_config(), rules=SubmitRules(),
+                 args=RunGridArgs(monitor=False, silent=True))
+
+        spec = main.dora.dir / main.dora._grids / "unittest_spec" / METRIC_SPEC_NAME
+        assert json_module.loads(spec.read_text())["columns"] == [
+            "train.loss", "valid.ce", "valid.ppl"]
+        assert load_metric_spec(main.dora, "unittest_spec") == [
+            "train.loss", "valid.ce", "valid.ppl"]
+
+
+def test_dry_run_records_no_metric_spec(tmpdir):
+    """It is still a write, so it stays on the far side of --dry_run."""
+    from ..inspect import METRIC_SPEC_NAME
+
+    with mock_shep():
+        main = get_main(tmpdir)
+        run_grid(main, Explorer(explore_1), "unittest_spec_dry",
+                 slurm=main.get_slurm_config(), rules=SubmitRules(),
+                 args=RunGridArgs(monitor=False, silent=True, dry_run=True))
+        grid_folder = main.dora.dir / main.dora._grids / "unittest_spec_dry"
+        assert not (grid_folder / METRIC_SPEC_NAME).exists()
+        assert not grid_folder.exists()

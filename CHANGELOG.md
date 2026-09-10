@@ -17,6 +17,10 @@ Faster, quieter, and readable without importing your project.
 - `dora grid` gained `--compact` and `--json`, for the dry run and for live
   monitoring alike, and now names the experiments a launch would cancel or drop
   because the grid no longer produces them.
+- `dora grid` records its Explorer's metric columns into the grid folder, and
+  `dora status` reads them, so the two agree on which metrics matter without
+  `status` importing the project. Failing that it guesses, now one column per
+  metric family rather than filling them all with quantiles of one number.
 - Every command shares the same output modes: `--pretty`, `--compact` and
   `--json`, defaulting by whether stdout is a terminal, and honouring
   `NO_COLOR`. Note this changes `dora grid`'s behaviour when redirected: it now

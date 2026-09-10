@@ -278,3 +278,60 @@ def test_log_keeps_colour_only_when_pretty(dora, capsys, monkeypatch):
     inspect.log_action(_Args(**base, json=True), dora)
     payload = json.loads(capsys.readouterr().out)
     assert payload["lines"] == ["hello"]      # never escape codes in JSON
+
+
+def test_status_uses_the_columns_the_grid_recorded(dora, capsys):
+    """The recorded spec is stage-qualified, so a grid whose experiments
+    logged different stages cannot silently mix them into one column."""
+    grid = dora.dir / dora._grids / "some.grid"
+    grid.mkdir(parents=True)
+    (grid / inspect.METRIC_SPEC_NAME).write_text(
+        json.dumps({"columns": ["valid.ce", "train.loss"]}))
+    for sig in ("aaaaaaaa", "bbbbbbbb"):
+        make_xp(dora, sig, history=[{"train": {"loss": 1.0, "noise": 9.0},
+                                     "valid": {"ce": 2.0}}])
+        (grid / sig).symlink_to(dora.dir / dora.xps / sig)
+
+    args = _Args(targets=["some.grid"], keys=None, limit=None, json=False,
+                 compact=True, sort=None)
+    assert inspect.status_action(args, dora) == 0
+    header = capsys.readouterr().out.splitlines()[1]
+    assert "valid.ce" in header and "train.loss" in header
+    assert "noise" not in header
+
+
+def test_status_falls_back_when_the_grid_recorded_nothing(dora, capsys):
+    make_xp(dora, "cccccccc", history=[{"valid": {"loss": 1.0}}])
+    args = _Args(targets=["cccccccc"], keys=None, limit=None, json=False,
+                 compact=True, sort=None)
+    assert inspect.status_action(args, dora) == 0
+    assert "loss" in capsys.readouterr().out
+
+
+def test_status_ignores_recorded_columns_nothing_logged(dora, capsys):
+    """An Explorer can derive columns in `process_sheep` from data that is not
+    in the raw history, and a column of dashes is worse than none."""
+    grid = dora.dir / dora._grids / "derived.grid"
+    grid.mkdir(parents=True)
+    (grid / inspect.METRIC_SPEC_NAME).write_text(
+        json.dumps({"columns": ["train.best_ce", "train.ping"]}))
+    make_xp(dora, "dddddddd", history=[{"train": {"loss": 0.5}}])
+    (grid / "dddddddd").symlink_to(dora.dir / dora.xps / "dddddddd")
+
+    args = _Args(targets=["derived.grid"], keys=None, limit=None, json=False,
+                 compact=True, sort=None)
+    assert inspect.status_action(args, dora) == 0
+    header = capsys.readouterr().out.splitlines()[1]
+    assert "best_ce" not in header
+    assert "loss" in header
+
+
+def test_one_column_per_metric_family():
+    """`ce_q1`..`ce_q5` are one metric wearing five hats; a real 74-metric
+    experiment used to spend every column on them."""
+    sample = {"ce": 1, "ce_q1": 1, "ce_q2": 1, "ce_q3": 1, "ppl": 1,
+              "audio_ce": 1, "max_mem": 1}
+    chosen = inspect.choose_metric_keys([sample], 4)
+    assert "ce" in chosen
+    assert not any(k.startswith("ce_q") for k in chosen)
+    assert "ppl" in chosen and "audio_ce" in chosen

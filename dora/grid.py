@@ -267,6 +267,11 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
                 shepherd.cancel_lazy(sheep=sheep)
 
     if not args.dry_run:
+        # The Explorer is only available here, where the grid file has been
+        # evaluated. Recording which metrics it displays lets `dora status`
+        # show the same columns without importing the project.
+        from .inspect import save_metric_spec
+        save_metric_spec(grid_folder, explorer)
         for sheep in sheeps:
             link = (grid_folder / sheep.xp.sig)
             if link.exists() or link.is_symlink():
