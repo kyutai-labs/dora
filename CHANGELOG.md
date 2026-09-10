@@ -21,6 +21,9 @@ Faster, quieter, and readable without importing your project.
   `dora status` reads them, so the two agree on which metrics matter without
   `status` importing the project. Failing that it guesses, now one column per
   metric family rather than filling them all with quantiles of one number.
+- Long flags accept `-` or `_` interchangeably, so `--dry-run` and `--dry_run`
+  both work wherever either did. Guessing wrong on a flag whose purpose is to
+  not do the thing was a poor way to find out.
 - Every command shares the same output modes: `--pretty`, `--compact` and
   `--json`, defaulting by whether stdout is a terminal, and honouring
   `NO_COLOR`. Note this changes `dora grid`'s behaviour when redirected: it now

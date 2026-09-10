@@ -32,6 +32,33 @@ def add_submit_rules(parser):
                         help="Temporarily deactivate git_save for any scheduled job.")
 
 
+def accept_both_separators(parser: argparse.ArgumentParser) -> None:
+    """Let every long flag be spelled with `-` or `_`, interchangeably.
+
+    Dora's flags are mostly `--dry_run`, `--from_sig`, `--no_monitoring`; the
+    rest of the world mostly writes `--dry-run`. Guessing wrong currently gets
+    you an error, and for `--dry_run` in particular that is a nasty way to find
+    out, since the whole point of the flag is to not do the thing.
+
+    The aliases are registered in the parser's lookup table but deliberately
+    not added to the actions' `option_strings`, so they resolve when parsing
+    while `--help` keeps showing one spelling per flag.
+    """
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for sub in action.choices.values():
+                accept_both_separators(sub)
+            continue
+        for option in list(action.option_strings):
+            if not option.startswith("--"):
+                continue
+            name = option[2:]
+            for alias in ("--" + name.replace("_", "-"),
+                          "--" + name.replace("-", "_")):
+                if alias != option and alias not in parser._option_string_actions:
+                    parser._option_string_actions[alias] = action
+
+
 def add_output_flags(parser):
     """The output flags every command shares.
 
@@ -175,7 +202,7 @@ def get_parser():
     changes.add_argument("--restart", action="store_true",
                          help="Restart selected XPs using saved argv and slurm.json, "
                               "without evaluating their grid. Keeps checkpoints.")
-    status.add_argument("--dry-run", action="store_true",
+    status.add_argument("--dry_run", action="store_true",
                         help="Validate and preview --cancel or --restart without changing jobs. "
                              "--limit only limits output, not the selected experiments.")
     status.set_defaults(action=_inspect.status_action)
@@ -250,6 +277,7 @@ def get_parser():
     export.add_argument("sigs", nargs='*', help='All the XP sigs to export.')
     export.set_defaults(action=export_action)
 
+    accept_both_separators(parser)
     return parser
 
 
@@ -258,7 +286,7 @@ def main():
     args = parser.parse_args()
     if (getattr(args, "dry_run", False) and args.command == "status"
             and not (args.cancel or args.restart)):
-        parser.error("status --dry-run requires --cancel or --restart")
+        parser.error("status --dry_run requires --cancel or --restart")
 
     setup_logging(args.verbose)
 

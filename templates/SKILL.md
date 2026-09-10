@@ -30,6 +30,8 @@ to say what `dora status` says in two.
 **Do not `cat` anything under the experiment directory.** If you find yourself
 wanting to, the answer is a flag on one of the commands above.
 
+Long flags accept either separator, so `--dry_run` and `--dry-run` both work.
+
 Useful narrowing: `--keys a,b` chooses metric columns, `--limit` raises or
 lowers the row cap, `--every N` downsamples a long history, and `why --job ID`
 or `--attempts N` looks further back through earlier attempts.
@@ -111,15 +113,15 @@ function is `main.get_xp(argv)`.
 any grid file:
 
 ```bash
-dora status <target> --cancel --dry-run    # preview: nothing changes
+dora status <target> --dry_run --cancel    # preview: nothing changes
 dora status <target> --cancel              # cancel the latest jobs and dependents
 dora status <target> --restart             # resubmit from the saved argv and
                                            #   slurm config, keeping checkpoints
 ```
 
-Note `--dry-run` here, against `--dry_run` for `dora grid`. `--restart` needs
-the Slurm snapshot a launch writes, so an experiment last run before that
-existed cannot be restarted this way; relaunch it through its grid instead.
+`--restart` needs the Slurm snapshot a launch writes, so an experiment last
+run before that existed cannot be restarted this way; relaunch it through its
+grid instead.
 
 Both change the cluster, so treat them like `dora grid`: only when asked.
 
