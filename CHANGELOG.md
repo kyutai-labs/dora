@@ -17,6 +17,11 @@ Faster, quieter, and readable without importing your project.
 - `dora grid` gained `--compact` and `--json`, for the dry run and for live
   monitoring alike, and now names the experiments a launch would cancel or drop
   because the grid no longer produces them.
+- Every command shares the same output modes: `--pretty`, `--compact` and
+  `--json`, defaulting by whether stdout is a terminal, and honouring
+  `NO_COLOR`. Note this changes `dora grid`'s behaviour when redirected: it now
+  prints the compact rendering rather than a treetable full of escape codes.
+  `--pretty` forces the old output.
 - Added an optional `dora.toml` for static project settings, so read-only
   commands need not import the training package. Supports `${env:VAR}`
   interpolation and `[[dora.dir_probe]]` for per-cluster experiment directories.

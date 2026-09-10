@@ -32,6 +32,24 @@ def add_submit_rules(parser):
                         help="Temporarily deactivate git_save for any scheduled job.")
 
 
+def add_output_flags(parser):
+    """The output flags every command shares.
+
+    Left unset, the mode follows stdout: a rendering meant for a person when
+    that is a terminal, and a capped, uncoloured one otherwise, so piping into
+    a file or a script does the useful thing without being told.
+    """
+    parser.add_argument("--compact", action="store_true",
+                        help="Capped, uncoloured output. The default when stdout "
+                             "is not a terminal.")
+    parser.add_argument("--pretty", action="store_true",
+                        help="Colourised output with generous limits. The default "
+                             "when stdout is a terminal.")
+    parser.add_argument("--json", action="store_true",
+                        help="Emit one compact JSON object. Complete unless --limit "
+                             "is given, unlike the rendered forms which are capped.")
+
+
 def add_slurm_config(parser):
     parser.add_argument("-g", "--gpus", type=int, help="Number of gpus.")
     parser.add_argument("-p", "--partition", help="Partition.")
@@ -108,10 +126,7 @@ def get_parser():
     group.add_argument("-t", "--tail", type=int,
                        help="Show the log for the job with the given index")
 
-    grid.add_argument("--compact", action='store_true',
-                      help="One capped, uncoloured line per XP instead of the treetable.")
-    grid.add_argument("--json", action='store_true',
-                      help="Emit one compact JSON object instead of the treetable.")
+    add_output_flags(grid)
     grid.add_argument("--init", action='store_true',
                       help="Init the given XPs so that their signature can be referenced.")
 
@@ -143,8 +158,7 @@ def get_parser():
     def add_inspect(name, help_text, targets_help):
         sub = subparsers.add_parser(name, help=help_text)
         sub.add_argument("targets", nargs="+", help=targets_help)
-        sub.add_argument("--json", action="store_true",
-                         help="Emit one compact JSON object instead of a table.")
+        add_output_flags(sub)
         sub.add_argument("--limit", type=int, default=None,
                          help="Maximum rows or lines to show.")
         sub.set_defaults(read_only=True)

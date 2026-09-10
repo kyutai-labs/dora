@@ -24,6 +24,7 @@ experiment directory -- see `dora.project`.
 from collections import OrderedDict
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 import re
 import subprocess as sp
@@ -36,6 +37,19 @@ from .xp import XP, load_xp
 
 # Hard caps. Everything is overridable with --limit, but the defaults are what
 # make the output safe to read without checking its size first.
+# Output modes. Pretty is for a person looking at a terminal: colour, and
+# generous limits. Compact is for everything else -- a pipe, a file, a script,
+# an agent -- where colour is noise and unbounded output is a hazard. The
+# default is chosen by looking at stdout, the same way `ls` and `git` decide
+# about colour, so neither audience has to remember a flag.
+PRETTY = "pretty"
+COMPACT = "compact"
+JSON = "json"
+
+# How much more a pretty rendering is allowed to show. Someone watching a
+# terminal scrolls; a caller reading the output pays for every line.
+PRETTY_SLACK = 5
+
 MAX_ROWS = 40
 MAX_METRIC_ROWS = 12
 MAX_METRIC_COLS = 6
@@ -50,19 +64,66 @@ JOB_RE = re.compile(r"^\d+(_\d+)?$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
+def output_mode(args: tp.Any) -> str:
+    """Pick the output mode: explicit flag first, otherwise by looking at stdout."""
+    if getattr(args, "json", False):
+        return JSON
+    if getattr(args, "compact", False):
+        return COMPACT
+    if getattr(args, "pretty", False):
+        return PRETTY
+    try:
+        interactive = sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        interactive = False
+    return PRETTY if interactive else COMPACT
+
+
+def use_colour(mode: str) -> bool:
+    """Colour only when pretty, and never if NO_COLOR is set (no-color.org)."""
+    return mode == PRETTY and not os.environ.get("NO_COLOR")
+
+
+def paint(text: str, colour: str, mode: str) -> str:
+    if not use_colour(mode):
+        return text
+    from .log import colorize
+    return colorize(text, colour)
+
+
+# Slurm states worth telling apart at a glance.
+_STATE_COLOURS = {
+    "RUNNING": "32", "COMPLETED": "32", "PENDING": "33", "REQUEUED": "33",
+    "FAILED": "31", "TIMEOUT": "31", "OUT_OF_MEMORY": "31", "NODE_FAIL": "31",
+    "CANCELLED": "90", "MISSING": "90", "N/A": "90",
+}
+
+
+def paint_state(state: str, mode: str) -> str:
+    colour = _STATE_COLOURS.get(state.upper())
+    return paint(state, colour, mode) if colour else state
+
+
+def cap(value: int, mode: str) -> int:
+    """A limit, relaxed for a human reading the output."""
+    return value * PRETTY_SLACK if mode == PRETTY else value
+
+
 def note(message: str) -> None:
     """Diagnostics go to stderr; stdout stays machine-readable."""
     print(message, file=sys.stderr)
 
 
-def emit(lines: tp.Sequence[str], as_json: tp.Any = None) -> None:
+def emit(lines: tp.Sequence[str], as_json: tp.Any = None,
+         mode: str = COMPACT) -> None:
     """The single way anything here writes to stdout."""
     if as_json is not None:
         print(json.dumps(as_json, separators=(",", ":"), default=str))
         return
     text = "\n".join(lines)
-    if len(text) > MAX_TOTAL_CHARS:
-        text = (text[:MAX_TOTAL_CHARS]
+    limit = cap(MAX_TOTAL_CHARS, mode)
+    if len(text) > limit:
+        text = (text[:limit]
                 + "\n... output truncated, narrow with --keys/--limit/--pattern")
     print(text)
 
@@ -104,17 +165,28 @@ def elide_parts(name: str, width: int) -> str:
     return " ".join(kept) + (f" +{dropped}" if dropped else "")
 
 
-def columns(rows: tp.List[tp.List[str]], headers: tp.List[str]) -> tp.List[str]:
-    """Fixed-width columns, no box drawing, no colour."""
+def _visible_len(text: str) -> int:
+    """Length as displayed, ignoring colour codes, so columns still line up."""
+    return len(ANSI_RE.sub("", text))
+
+
+def _pad(text: str, width: int) -> str:
+    return text + " " * max(0, width - _visible_len(text))
+
+
+def columns(rows: tp.List[tp.List[str]], headers: tp.List[str],
+            mode: str = COMPACT) -> tp.List[str]:
+    """Fixed-width columns, no box drawing. Colour only in pretty mode."""
     if not rows:
         return []
     widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
-            widths[i] = max(widths[i], len(cell))
-    out = ["  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)).rstrip()]
+            widths[i] = max(widths[i], _visible_len(cell))
+    header = "  ".join(_pad(h, widths[i]) for i, h in enumerate(headers)).rstrip()
+    out = [paint(header, "1", mode)]
     for row in rows:
-        out.append("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+        out.append("  ".join(_pad(cell, widths[i]) for i, cell in enumerate(row)).rstrip())
     return out
 
 
@@ -393,8 +465,12 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         note("error: nothing to show")
         return 1
 
-    limit = args.limit or MAX_ROWS
-    shown = targets[:limit]
+    mode = output_mode(args)
+    # JSON is the format a script asks for when it wants the data, so silently
+    # dropping rows would be the wrong kindness; it is complete unless --limit
+    # says otherwise. The rendered forms stay capped.
+    limit = args.limit or (None if mode == JSON else cap(MAX_ROWS, mode))
+    shown = targets if limit is None else targets[:limit]
 
     jobs = {}
     for target in shown:
@@ -420,7 +496,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
             "metrics": metrics,
         })
 
-    if args.json:
+    if mode == JSON:
         emit([], as_json={"count": len(targets), "shown": len(shown),
                           "experiments": records})
         return 0
@@ -433,8 +509,8 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         rows.append([
             str(record["index"]),
             record["sig"],
-            elide_parts(record["name"], MAX_NAME_CHARS),
-            record["state"],
+            elide_parts(record["name"], cap(MAX_NAME_CHARS, mode)),
+            paint_state(record["state"], mode),
             record["job"] or "-",
             str(record["epoch"]),
             "-" if record["ping"] is None else ago(record["ping"]),
@@ -446,7 +522,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         lines.append(f"grid {grids.pop()} ({len(targets)} xps)")
     if base_name:
         lines.append("base: " + elide_parts(base_name, 160))
-    lines += columns(rows, headers)
+    lines += columns(rows, headers, mode)
     if len(targets) > len(shown):
         lines.append(f"... {len(targets) - len(shown)} more (--limit)")
     tally: tp.Dict[str, int] = {}
@@ -454,7 +530,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
     lines.append(" | ".join(f"{state.lower()} {count}"
                             for state, count in sorted(tally.items())))
-    emit(lines)
+    emit(lines, mode=mode)
     return 0
 
 
@@ -481,28 +557,29 @@ def metrics_action(args: tp.Any, dora: DoraConfig) -> int:
         note(f"error: no stage {stage!r} in {target.sig}")
         return 1
 
+    mode = output_mode(args)
     if args.every:
         rows = rows[::args.every]
-    limit = args.limit or MAX_METRIC_ROWS
+    limit = args.limit or cap(MAX_METRIC_ROWS, mode)
     total = len(rows)
     if len(rows) > limit:
         rows = rows[-limit:]
 
     keys = ([k.strip() for k in args.keys.split(",")] if args.keys
-            else choose_metric_keys([m for _, m in rows], MAX_METRIC_COLS))
+            else choose_metric_keys([m for _, m in rows], cap(MAX_METRIC_COLS, mode)))
 
-    if args.json:
+    if mode == JSON:
         emit([], as_json={
             "sig": target.sig, "stage": stage, "epochs": len(history),
             "rows": [{"epoch": e, **{k: m.get(k) for k in keys}} for e, m in rows]})
         return 0
 
     table = columns([[str(epoch)] + [fmt(metrics.get(k, "-")) for k in keys]
-                     for epoch, metrics in rows], ["ep"] + keys)
+                     for epoch, metrics in rows], ["ep"] + keys, mode)
     lines = [f"{target.sig} {stage}  {len(history)} epochs"
              + (f", showing {len(rows)} of {total}" if len(rows) < total else "")]
     lines += table
-    emit(lines)
+    emit(lines, mode=mode)
     return 0
 
 
@@ -581,19 +658,26 @@ def log_attempts(target: Target,
     return ordered
 
 
-def clean(line: str) -> str:
-    """Strip colour and cut the pathological lines.
+def clean(line: str, mode: str = COMPACT) -> str:
+    """Trim a log line for display.
 
-    Hydra dumps every override onto a single line on error; on a real project
-    that is ~4 KB, roughly a thousand tokens, for no benefit.
+    Solver logs are colourised, which is exactly what a person reading them in
+    a terminal wants and exactly what anything else does not, so the escapes
+    are kept in pretty mode and stripped otherwise. Long lines are cut either
+    way: Hydra dumps every override onto one line on error, which on a real
+    project is ~4KB, roughly a thousand tokens, for no benefit.
     """
-    line = ANSI_RE.sub("", line.rstrip("\n"))
-    if len(line) > MAX_LINE_CHARS:
-        return line[:200] + f" ...[+{len(line) - 200} chars]"
+    line = line.rstrip("\n")
+    if not use_colour(mode):
+        line = ANSI_RE.sub("", line)
+    limit = cap(MAX_LINE_CHARS, mode)
+    if _visible_len(line) > limit:
+        return ANSI_RE.sub("", line)[:limit // 2] + \
+            f" ...[+{_visible_len(line) - limit // 2} chars]"
     return line
 
 
-def tail(path: Path, count: int) -> tp.List[str]:
+def tail(path: Path, count: int, mode: str = COMPACT) -> tp.List[str]:
     """Last `count` lines, read from the end rather than through the file."""
     try:
         size = path.stat().st_size
@@ -606,7 +690,8 @@ def tail(path: Path, count: int) -> tp.List[str]:
             size -= step
             fileobj.seek(size)
             data = fileobj.read(step) + data
-    return [clean(ln) for ln in data.decode(errors="replace").splitlines()[-count:]]
+    return [clean(ln, mode)
+            for ln in data.decode(errors="replace").splitlines()[-count:]]
 
 
 def log_action(args: tp.Any, dora: DoraConfig) -> int:
@@ -620,16 +705,21 @@ def log_action(args: tp.Any, dora: DoraConfig) -> int:
     if not paths:
         note(f"error: no logs for {target.sig}")
         return 1
+    mode = output_mode(args)
     path = paths[0]
-    count = min(args.limit or MAX_LOG_LINES, MAX_LOG_LINES_HARD)
-    lines = tail(path, count if not args.grep else MAX_LOG_LINES_HARD)
+    hard = cap(MAX_LOG_LINES_HARD, mode)
+    count = min(args.limit or cap(MAX_LOG_LINES, mode), hard)
+    lines = tail(path, count if not args.grep else hard, mode)
     if args.grep:
         pattern = re.compile(args.grep)
-        lines = [ln for ln in lines if pattern.search(ln)][-count:]
-    if args.json:
-        emit([], as_json={"sig": target.sig, "file": str(path), "lines": lines})
+        lines = [ln for ln in lines if pattern.search(ANSI_RE.sub("", ln))][-count:]
+    if mode == JSON:
+        # JSON never carries escape codes, whatever the terminal is doing.
+        emit([], as_json={"sig": target.sig, "file": str(path),
+                          "lines": [ANSI_RE.sub("", ln) for ln in lines]})
         return 0
-    emit([f"{target.sig} {path.name} (last {len(lines)} lines)"] + lines)
+    header = f"{target.sig} {path.name} (last {len(lines)} lines)"
+    emit([paint(header, "1", mode)] + lines, mode=mode)
     return 0
 
 
@@ -713,6 +803,7 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
         return 1
     target = resolution.targets[0]
 
+    mode = output_mode(args)
     job = read_json(target.folder / "job.json") or {}
     current_job = job.get("job_id", "")
 
@@ -758,14 +849,15 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
             culprit = name
             break
 
-    if args.json:
+    if mode == JSON:
         emit([], as_json={"sig": target.sig, "job": current_job,
                           "state": current_state, "attempt": culprit,
                           "attempts": [name for name, _ in attempts],
                           "findings": findings})
         return 0
 
-    header = f"{target.sig}  job {current_job or '-'}  state {current_state}"
+    header = (f"{target.sig}  job {current_job or '-'}  state "
+              + paint_state(current_state, mode))
     jobs = [name for name, _ in attempts if name.isdigit()]
     if len(jobs) > 1:
         header += f"  ({len(jobs)} attempts: " + " ".join(jobs[:6]) + ")"
@@ -780,7 +872,7 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
         if not attempts:
             lines.append("(no logs at all for this experiment)")
         lines.append(f"more: dora log {target.sig} --tail 80")
-        emit(lines)
+        emit(lines, mode=mode)
         return 0
 
     attempt_state = states.get(culprit or "", "")
@@ -796,14 +888,15 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f"[{finding['file']}] {finding['cause'] or 'traceback'}")
+        lines.append(f"[{finding['file']}] "
+                     + paint(str(finding["cause"] or "traceback"), "31", mode))
         lines += finding["traceback"]
         if len(seen) >= 2:
             break
     others = len(findings) - len(seen)
     if others > 0:
         lines.append(f"... same on {others} other rank(s)")
-    emit(lines)
+    emit(lines, mode=mode)
     return 0
 
 
@@ -843,23 +936,27 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
     for sheep in stale:
         (done_stale if sheep.is_done() else live_stale).append(sheep.xp.sig)
 
-    if getattr(args, "json", False):
-        emit([], as_json={"experiments": records, "base_name": base_name,
+    mode = output_mode(args)
+    if mode == JSON:
+        wanted = getattr(args, "limit", None)
+        emit([], as_json={"experiments": records[:wanted] if wanted else records,
+                          "base_name": base_name,
                           "would_cancel": live_stale, "would_drop": done_stale})
         return
 
-    limit = getattr(args, "limit", None) or MAX_ROWS
-    shown = records[:limit]
-    metric_keys = choose_metric_keys([r["metrics"] for r in shown], 4)
-    rows = [[str(r["index"]), r["sig"], elide_parts(r["name"], MAX_NAME_CHARS),
-             r["state"], r["job"] or "-"]
+    limit = getattr(args, "limit", None) or cap(MAX_ROWS, mode)
+    shown = records[:limit]  # only the rendered form is capped; JSON left above
+    metric_keys = choose_metric_keys([r["metrics"] for r in shown], cap(4, mode))
+    rows = [[str(r["index"]), r["sig"],
+             elide_parts(r["name"], cap(MAX_NAME_CHARS, mode)),
+             paint_state(r["state"], mode), r["job"] or "-"]
             + [fmt(r["metrics"].get(k, "-")) for k in metric_keys]
             for r in shown]
 
     out = []
     if base_name:
         out.append("base: " + elide_parts(base_name, 160))
-    out += columns(rows, ["#", "sig", "name", "state", "job"] + metric_keys)
+    out += columns(rows, ["#", "sig", "name", "state", "job"] + metric_keys, mode)
     if len(records) > len(shown):
         out.append(f"... {len(records) - len(shown)} more (--limit)")
     tally: tp.Dict[str, int] = {}
@@ -868,11 +965,12 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
     out.append(" | ".join(f"{state.lower()} {count}"
                           for state, count in sorted(tally.items())))
     if live_stale:
-        out.append(f"WARNING: {len(live_stale)} running experiment(s) would be CANCELLED, "
+        out.append(paint("WARNING:", "31", mode)
+                   + f" {len(live_stale)} running experiment(s) would be CANCELLED, "
                    "the grid no longer produces them: " + " ".join(live_stale[:10])
                    + (" ..." if len(live_stale) > 10 else ""))
     if done_stale:
         out.append(f"{len(done_stale)} finished experiment(s) would be dropped from the "
                    "grid (results kept): " + " ".join(done_stale[:10])
                    + (" ..." if len(done_stale) > 10 else ""))
-    emit(out)
+    emit(out, mode=mode)

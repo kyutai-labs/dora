@@ -352,8 +352,8 @@ dora log SIGNATURE [--tail 40] [--grep]  # log with ANSI stripped and huge lines
 dora why SIGNATURE                       # classify why a job died
 ```
 
-`dora grid` takes the same treatment through `--compact` and `--json`, for the
-dry run and for live monitoring alike:
+`dora grid` takes the same treatment, for the dry run and for live monitoring
+alike:
 
 ```bash
 dora grid GRID --dry_run --compact   # what it would schedule, in a tenth the output
@@ -364,10 +364,27 @@ The compact rendering also names the experiments the grid has *stopped*
 producing, separating the running ones a launch would cancel from the finished
 ones it would merely drop from the grid.
 
-They are read-only and never schedule or cancel anything. Common flags:
-`--json` for one compact machine-readable object, `--limit` to raise or lower the
-row cap, `--keys a,b` to choose metric columns. Targets may be signatures, grid
-names, Slurm job ids, or `@sig` to force signature interpretation.
+They are read-only and never schedule or cancel anything. Targets may be
+signatures, grid names, Slurm job ids, or `@sig` to force signature
+interpretation.
+
+### Output modes
+
+Every command, `dora grid` included, shares the same three:
+
+| | |
+|---|---|
+| `--pretty` | colourised, generous limits. The default when stdout is a terminal. |
+| `--compact` | uncoloured and capped. The default when stdout is not. |
+| `--json` | one object, complete unless `--limit` says otherwise. |
+
+The default follows stdout, the way `ls` and `git` decide about colour, so
+piping into a file or a script does the useful thing without being told, and a
+person at a terminal gets something readable. `NO_COLOR` is honoured. For
+`dora grid`, pretty is the treetable it has always printed.
+
+`dora log` follows the same rule for the log's *own* colour: kept when pretty,
+stripped otherwise, and never present in JSON.
 
 `dora why` recognises out-of-memory, NCCL timeouts, Hydra config errors and Slurm
 step failures, deduplicates across ranks, and falls back to the tail of the newest

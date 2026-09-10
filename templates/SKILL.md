@@ -18,7 +18,9 @@ dora log <sig> [--tail 40] [--grep] # log, decoloured
 dora why <sig>                      # what killed it
 ```
 
-All four are read-only, capped, and take `--json`. They are the right tool
+All four are read-only. Because their output is not going to a terminal, they
+default to a capped, uncoloured rendering; `--json` gives one object instead,
+and `--pretty` the colourised form a person would want. They are the right tool
 because the alternatives are enormous: a real `history.json` is hundreds of KB,
 a `solver.log.*` is megabytes and full of ANSI escapes, and `dora grid` prints a
 wrapped treetable that costs tens of KB to say what `dora status` says in two.

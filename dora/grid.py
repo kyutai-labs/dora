@@ -78,10 +78,10 @@ class RunGridArgs:
 
     jupyter: bool = False  # Are we in a jupyter notebook (will erase cell output content first.)
 
-    # Output format. The default treetable is built for a human watching a
-    # terminal; these produce something a script -- or a person who only wanted
-    # one number -- can actually read.
+    # Output format. Left unset, the mode is chosen by looking at stdout: the
+    # treetable for a terminal, the compact rendering for a pipe or a file.
     compact: bool = False
+    pretty: bool = False
     json: bool = False
 
     # Other flags, supported only from the command line.
@@ -321,10 +321,11 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
                 pass
         return sheeps
 
+    from .inspect import JSON, output_mode
     maybe_print: tp.Callable
     # --json must put a single parseable object on stdout, so the usual chatter
     # is suppressed for it exactly as for --silent.
-    if args.silent or getattr(args, "json", False):
+    if args.silent or output_mode(args) is JSON:
         maybe_print = no_print
     else:
         maybe_print = print
@@ -437,8 +438,8 @@ def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List
         line.update(other)
         lines.append(line)
 
-    if getattr(args, "compact", False) or getattr(args, "json", False):
-        from .inspect import render_grid
+    from .inspect import PRETTY, output_mode, render_grid
+    if output_mode(args) is not PRETTY:
         render_grid(args, herd, names, base_name, lines, stale)
         return finished
 

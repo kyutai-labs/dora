@@ -210,3 +210,71 @@ def test_current_attempt_comes_from_job_json_not_the_biggest_id(dora):
 
 def log_attempt_names(target, current_job=None):
     return [name for name, _ in inspect.log_attempts(target, current_job=current_job)]
+
+
+def test_mode_follows_stdout_when_no_flag_is_given(monkeypatch):
+    """Neither audience should have to remember a flag: a terminal gets the
+    readable rendering, a pipe gets the one a script can consume."""
+    class _Out:
+        def __init__(self, tty):
+            self._tty = tty
+
+        def isatty(self):
+            return self._tty
+
+    monkeypatch.setattr(inspect.sys, "stdout", _Out(True))
+    assert inspect.output_mode(_Args()) == inspect.PRETTY
+    monkeypatch.setattr(inspect.sys, "stdout", _Out(False))
+    assert inspect.output_mode(_Args()) == inspect.COMPACT
+
+
+def test_explicit_flags_beat_the_tty(monkeypatch):
+    class _Tty:
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(inspect.sys, "stdout", _Tty())
+    assert inspect.output_mode(_Args(compact=True)) == inspect.COMPACT
+    assert inspect.output_mode(_Args(json=True)) == inspect.JSON
+    # json wins over compact: it is the more specific request.
+    assert inspect.output_mode(_Args(compact=True, json=True)) == inspect.JSON
+
+
+def test_no_color_is_respected(monkeypatch):
+    """no-color.org: an environment variable users already know."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert inspect.use_colour(inspect.PRETTY)
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert not inspect.use_colour(inspect.PRETTY)
+    assert not inspect.use_colour(inspect.COMPACT)
+
+
+def test_columns_line_up_even_when_coloured(monkeypatch):
+    """Padding has to count visible characters, or every colour code shifts
+    the column after it."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    plain = inspect.columns([["ab", "c"], ["d", "ef"]], ["h1", "h2"], inspect.COMPACT)
+    coloured = inspect.columns(
+        [[inspect.paint("ab", "31", inspect.PRETTY), "c"], ["d", "ef"]],
+        ["h1", "h2"], inspect.PRETTY)
+    assert [inspect.ANSI_RE.sub("", ln) for ln in coloured] == plain
+
+
+def test_log_keeps_colour_only_when_pretty(dora, capsys, monkeypatch):
+    """Solver logs are colourised, which is what a person reading them wants
+    and what anything parsing them does not."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    folder = make_xp(dora, "77777777")
+    (folder / "submitit").mkdir()
+    (folder / "submitit" / "1_0_log.out").write_text("\x1b[36mhello\x1b[0m\n")
+
+    base = dict(targets=["77777777"], limit=5, grep=None, rank=None, job=None)
+    inspect.log_action(_Args(**base, compact=True), dora)
+    assert "\x1b" not in capsys.readouterr().out
+
+    inspect.log_action(_Args(**base, pretty=True), dora)
+    assert "\x1b[36m" in capsys.readouterr().out
+
+    inspect.log_action(_Args(**base, json=True), dora)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["lines"] == ["hello"]      # never escape codes in JSON
