@@ -70,3 +70,6 @@ exclude = [
 testpaths = [
     "dora",
 ]
+
+[tool.uv]
+exclude-newer = "7 days"
