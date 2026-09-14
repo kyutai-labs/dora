@@ -11,6 +11,7 @@ that can be used from a notebook or any other script.
 When using the API, you can provide the equivalent of the command line flags
 with the `RunGridArgs` dataclass.
 """
+
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 import fnmatch
@@ -61,6 +62,7 @@ class RunGridArgs:
             and reschedule a new experiment.
 
     """
+
     patterns: tp.List[str] = field(default_factory=list)
 
     # Monitoring params
@@ -101,7 +103,7 @@ def _get_explore(args, main):
     grids = import_or_fatal(grid_package)
 
     if args.grid is not None:
-        grid_filename = args.grid.replace('.', '/') + '.py'
+        grid_filename = args.grid.replace(".", "/") + ".py"
         grid_file = Path(grids.__file__).parent / grid_filename
     if args.grid is None or not grid_file.exists():
         candidates = []
@@ -109,12 +111,11 @@ def _get_explore(args, main):
         for root, folders, files in os.walk(pkg_root):
             for file in files:
                 fullpath = (Path(root) / file).relative_to(pkg_root)
-                if fullpath.name.endswith('.py') and not fullpath.name.startswith('_'):
+                if fullpath.name.endswith(".py") and not fullpath.name.startswith("_"):
                     fullpath = fullpath.parent / fullpath.stem
-                    candidates.append(str(fullpath).replace('/', '.'))
+                    candidates.append(str(fullpath).replace("/", "."))
         if args.grid is not None and not grid_file.exists():
-            log(f'No grid file {grid_filename} in package {grid_package}. '
-                'Maybe you made a typo?')
+            log(f"No grid file {grid_filename} in package {grid_package}. Maybe you made a typo?")
         log(f"Potential grids are: {', '.join(candidates)}")
         sys.exit(0)
 
@@ -142,9 +143,14 @@ def grid_action(args: tp.Any, main: DecoratedMain):
     run_grid(main, explorer, args.grid, rules, slurm, grid_args)
 
 
-def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
-             rules: SubmitRules = SubmitRules(), slurm: tp.Optional[SlurmConfig] = None,
-             args: RunGridArgs = RunGridArgs()) -> tp.List[Sheep]:
+def run_grid(
+    main: DecoratedMain,
+    explorer: Explorer,
+    grid_name: str,
+    rules: SubmitRules = SubmitRules(),
+    slurm: tp.Optional[SlurmConfig] = None,
+    args: RunGridArgs = RunGridArgs(),
+) -> tp.List[Sheep]:
     """
     Run a grid search, this is the API underlying the `dora grid` command,
     so that it can be used from a notebook.
@@ -194,8 +200,10 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
     if args.clear:
         if args.dry_run:
             fatal("--dry_run is incompatible with --clear.")
-        log(f"You are about to restart {len(sheeps)} experiments from the grid {grid_name} "
-            "from scratch. This cannot be reverted.")
+        log(
+            f"You are about to restart {len(sheeps)} experiments from the grid {grid_name} "
+            "from scratch. This cannot be reverted."
+        )
         if args._from_commandline:
             repl = input("Confirm [yN]: ")
             if repl.lower() != "y":
@@ -213,7 +221,7 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
 
     to_unlink = []
     old_sheeps = []
-    for child in (grid_folder.iterdir() if grid_folder.exists() else []):
+    for child in grid_folder.iterdir() if grid_folder.exists() else []:
         if child.name not in herd.sheeps:
             to_unlink.append(child)
             try:
@@ -255,8 +263,10 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
             assert old_sheep.job is not None
             shepherd.cancel_lazy(sheep=old_sheep)
             name = main.get_name(old_sheep.xp)
-            log(f"Canceling job {old_sheep.job.job_id} for no longer required "
-                f"sheep {old_sheep.xp.sig}/{name}")
+            log(
+                f"Canceling job {old_sheep.job.job_id} for no longer required "
+                f"sheep {old_sheep.xp.sig}/{name}"
+            )
 
     if args.cancel:
         for sheep in sheeps:
@@ -271,9 +281,10 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         # evaluated. Recording which metrics it displays lets `dora status`
         # show the same columns without importing the project.
         from .inspect import save_metric_spec
+
         save_metric_spec(grid_folder, explorer)
         for sheep in sheeps:
-            link = (grid_folder / sheep.xp.sig)
+            link = grid_folder / sheep.xp.sig
             if link.exists() or link.is_symlink():
                 assert link.is_symlink() and link.resolve() == sheep.xp.folder.resolve()
             else:
@@ -302,8 +313,9 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
 
     if actions:
         if not args._from_commandline:
-            raise RuntimeError("The folder, log, and tail "
-                               "flags are only supported from the command line.")
+            raise RuntimeError(
+                "The folder, log, and tail flags are only supported from the command line."
+            )
         assert len(actions) == 1
         index = actions[0]
         try:
@@ -327,6 +339,7 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         return sheeps
 
     from .inspect import JSON, output_mode
+
     maybe_print: tp.Callable
     # --json must put a single parseable object on stdout, so the usual chatter
     # is suppressed for it exactly as for --silent.
@@ -338,6 +351,7 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
     while True:
         if args.jupyter and not args.silent:
             from IPython import display
+
             display.clear_output(wait=True)
         shepherd.update()
         if monitor(args, main, explorer, sheeps, maybe_print, stale=old_sheeps):
@@ -348,12 +362,12 @@ def run_grid(main: DecoratedMain, explorer: Explorer, grid_name: str,
         sleep = int(args.interval * 60)
         maybe_print()
         for ela in range(sleep):
-            out = f'Next update in {sleep - ela:.0f} seconds       '
+            out = f"Next update in {sleep - ela:.0f} seconds       "
             if sleep - ela < 10:
-                out = colorize(out, '31')
-            maybe_print(out, end='\r')
+                out = colorize(out, "31")
+            maybe_print(out, end="\r")
             time.sleep(1)
-        maybe_print(' ' * 60)
+        maybe_print(" " * 60)
     return sheeps
 
 
@@ -362,10 +376,10 @@ def _match_name(name, patterns):
         return True
     for pattern in patterns:
         neg = False
-        if pattern[:1] == '!':
+        if pattern[:1] == "!":
             pattern = pattern[1:]
             neg = True
-        result = fnmatch.fnmatch(name, '*' + pattern + '*')
+        result = fnmatch.fnmatch(name, "*" + pattern + "*")
         if neg:
             if result:
                 return False
@@ -374,8 +388,9 @@ def _match_name(name, patterns):
     return True
 
 
-def _filter_grid_sheeps(patterns: tp.List[str], main: DecoratedMain,
-                        sheeps: tp.List[Sheep]) -> tp.List[Sheep]:
+def _filter_grid_sheeps(
+    patterns: tp.List[str], main: DecoratedMain, sheeps: tp.List[Sheep]
+) -> tp.List[Sheep]:
     indexes = []
     for p in list(patterns):
         try:
@@ -394,8 +409,14 @@ def _filter_grid_sheeps(patterns: tp.List[str], main: DecoratedMain,
     return out
 
 
-def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List[Sheep],
-            maybe_print: tp.Callable, stale: tp.Sequence[Sheep] = ()) -> bool:
+def monitor(
+    args: tp.Any,
+    main: DecoratedMain,
+    explorer: Explorer,
+    herd: tp.List[Sheep],
+    maybe_print: tp.Callable,
+    stale: tp.Sequence[Sheep] = (),
+) -> bool:
     """Single iteration of monitoring of the jobs in a Grid.
     Returns `True` if all jobs are done or failed, and `False` otherwise.
 
@@ -428,14 +449,14 @@ def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List
         else:
             state = state[:3]
         meta = {
-            'name': name,
-            'index': index,
-            'sid': sheep.current_job_id or '',  # i know 0 is a valid sid, but who cares.
-            'sig': sheep.xp.sig,
-            'state': state,
+            "name": name,
+            "index": index,
+            "sid": sheep.current_job_id or "",  # i know 0 is a valid sid, but who cares.
+            "sig": sheep.xp.sig,
+            "state": state,
         }
         line = {}
-        line['Meta'] = meta
+        line["Meta"] = meta
         try:
             other = explorer.process_sheep(sheep, history)
         except NotImplementedError:
@@ -444,18 +465,21 @@ def monitor(args: tp.Any, main: DecoratedMain, explorer: Explorer, herd: tp.List
         lines.append(line)
 
     from .inspect import PRETTY, output_mode, render_grid
+
     if output_mode(args) is not PRETTY:
         render_grid(args, herd, names, base_name, lines, stale)
         return finished
 
     import treetable as tt
+
     if base_name:
         maybe_print("Base name: ", base_name)
     table = tt.table(
         shorten=True,
         groups=[
             tt.group("Meta", explorer.get_grid_meta()),
-        ] + explorer.get_grid_metrics()
+        ]
+        + explorer.get_grid_metrics(),
     )
     maybe_print(tt.treetable(lines, table, colors=explorer.get_colors()))
     return finished

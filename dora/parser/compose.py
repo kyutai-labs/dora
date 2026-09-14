@@ -32,10 +32,14 @@ def _merge(target: dict, source: dict, *, strict=False):
             raise UnsupportedFeature(f"Merging a container into an interpolation at {key!r}")
         if isinstance(previous, dict) and isinstance(value, dict):
             _merge(previous, value, strict=strict)
-        elif (isinstance(previous, (dict, list)) and isinstance(value, (dict, list))
-              and type(previous) is not type(value)):
+        elif (
+            isinstance(previous, (dict, list))
+            and isinstance(value, (dict, list))
+            and type(previous) is not type(value)
+        ):
             raise ConfigError(
-                f"Cannot merge {type(value).__name__} into {type(previous).__name__} at {key!r}")
+                f"Cannot merge {type(value).__name__} into {type(previous).__name__} at {key!r}"
+            )
         else:
             target[key] = deepcopy(value)
 
@@ -65,7 +69,8 @@ def _apply(config: dict, override: Override):
                     raise UnsupportedFeature(f"Updating through an interpolation: {override.key}")
                 if not force:
                     raise ConfigError(
-                        f"Unknown or non-container path {override.key!r}; use '+' to add it")
+                        f"Unknown or non-container path {override.key!r}; use '+' to add it"
+                    )
                 parent[part] = {}
             parent = parent[part]
         else:
@@ -121,7 +126,7 @@ def _package(parent, value):
     result = ".".join(filter(None, (parent, value)))
     # Hydra also accepts Audium's historical '__global__' spelling.
     if "_global_" in result:
-        result = result[result.rfind("_global_") + len("_global_") + 1:]
+        result = result[result.rfind("_global_") + len("_global_") + 1 :]
     return result
 
 
@@ -234,7 +239,8 @@ class ConfigParser:
         cached = self._bases.get(cache_key)
         if cached:
             if not self.check_files or all(
-                    self._stamp(p) == stamp for p, stamp in cached.dependencies.items()):
+                self._stamp(p) == stamp for p, stamp in cached.dependencies.items()
+            ):
                 self._bases.move_to_end(cache_key)
                 return cached
         overrides = [parse_override(arg) for arg in groups]
@@ -265,14 +271,21 @@ class ConfigParser:
             ref, sep, relocation = key.partition("@")
             group = _join(directory, ref)
             default_package = _package(
-                package, relocation if sep else ref.lstrip("/").replace("/", "."))
+                package, relocation if sep else ref.lstrip("/").replace("/", ".")
+            )
             identity = group
             if default_package != group.replace("/", "."):
                 identity += "@" + (default_package or "_global_")
             return group, relocation if sep else None, default_package, identity
 
-        def expand(name, parent_package="", default_package="", relocation=None,
-                   optional=False, group_directory=None):
+        def expand(
+            name,
+            parent_package="",
+            default_package="",
+            relocation=None,
+            optional=False,
+            group_directory=None,
+        ):
             if name in stack:
                 raise ConfigError("Defaults cycle: " + " -> ".join(stack + [name]))
             if len(stack) >= 100:
@@ -332,12 +345,14 @@ class ConfigParser:
                         ref, sep, reloc = entry.partition("@")
                         path = _join(directory, ref)
                         default = _package(
-                            package, ref.lstrip("/").rpartition("/")[0].replace("/", "."))
+                            package, ref.lstrip("/").rpartition("/")[0].replace("/", ".")
+                        )
                         blocks.append(expand(path, package, default, reloc if sep else None))
                     else:
                         (group, reloc, default, identity), choice, optional_entry = entry
                         if identity in deletes and (
-                                deletes[identity] is None or deletes[identity] == choice):
+                            deletes[identity] is None or deletes[identity] == choice
+                        ):
                             deleted.add(identity)
                             continue
                         choice = selections.get(identity, choice)
@@ -348,17 +363,23 @@ class ConfigParser:
                             continue
                         if isinstance(choice, list):
                             raise UnsupportedFeature(
-                                "Multiple choices in a defaults group are not supported")
+                                "Multiple choices in a defaults group are not supported"
+                            )
                         if not isinstance(choice, str):
                             raise ConfigError(
-                                f"Config group {identity} needs a string or null choice")
+                                f"Config group {identity} needs a string or null choice"
+                            )
                         if choice == "???":
                             raise ConfigError(f"Config group {identity} requires a choice")
                         if "${" in choice:
                             raise UnsupportedFeature(
-                                "Interpolated defaults choices are not supported")
-                        blocks.append(expand(
-                            group + "/" + choice, package, default, reloc, optional_entry, group))
+                                "Interpolated defaults choices are not supported"
+                            )
+                        blocks.append(
+                            expand(
+                                group + "/" + choice, package, default, reloc, optional_entry, group
+                            )
+                        )
             finally:
                 stack.pop()
             return [item for block in reversed(blocks) for item in block]
@@ -368,7 +389,8 @@ class ConfigParser:
         if unused:
             raise ConfigError(
                 f"Overrides did not match the defaults list: {sorted(unused)}; "
-                "use '+' to append a group")
+                "use '+' to append a group"
+            )
         unmatched_deletes = deletes.keys() - deleted
         if unmatched_deletes:
             raise ConfigError(f"Group deletion did not match: {sorted(unmatched_deletes)}")

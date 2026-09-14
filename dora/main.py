@@ -55,6 +55,7 @@ class DecoratedMain(NamesMixin):
             by the user.
         dora (DoraConfig): configuration for Dora.
     """
+
     _slow = False
 
     def __init__(self, main: MainFun, dora: DoraConfig):
@@ -64,13 +65,13 @@ class DecoratedMain(NamesMixin):
         if module_name is None:
             # we are being called in a weird way and definitely not from
             # a Dora command.
-            self.package = 'unknown'
-            self.main_module = 'train'
+            self.package = "unknown"
+            self.main_module = "train"
         else:
-            if '.' in module_name:
+            if "." in module_name:
                 self.package, self.main_module = module_name.rsplit(".", 1)
             else:
-                self.package = 'unknown'
+                self.package = "unknown"
                 self.main_module = module_name
 
         self.name = self.package
@@ -95,8 +96,7 @@ class DecoratedMain(NamesMixin):
         return _load_main, (self._full_name,)
 
     def get_xp(self, argv: tp.Sequence[str]) -> XP:
-        """Return an XP given a list of arguments.
-        """
+        """Return an XP given a list of arguments."""
         raise NotImplementedError()
 
     def _get_argv(self) -> tp.List[str]:
@@ -115,12 +115,12 @@ class DecoratedMain(NamesMixin):
         can be easily shared using its signature.
         """
         xp.folder.mkdir(exist_ok=True, parents=True)
-        json.dump(xp.argv, open(xp._argv_cache, 'w'))
+        json.dump(xp.argv, open(xp._argv_cache, "w"))
         if xp.delta is not None:
             # Persisted here because this is the only moment it is known for
             # certain. Recomputing it later needs the config tree exactly as it
             # was, and config trees move on. See `XP._delta_cache`.
-            json.dump(xp.delta, open(xp._delta_cache, 'w'))
+            json.dump(xp.delta, open(xp._delta_cache, "w"))
         if xp._shared_argv_cache is not None:
             # Create xps and XP folders with 0777 mode.
             xp._shared_argv_cache.parent.parent.mkdir(exist_ok=True, parents=True, mode=0o777)
@@ -130,7 +130,7 @@ class DecoratedMain(NamesMixin):
                 xp._shared_argv_cache.parent.chmod(0o777)
             except PermissionError:
                 pass
-            json.dump(xp.argv, open(xp._shared_argv_cache, 'w'))
+            json.dump(xp.argv, open(xp._shared_argv_cache, "w"))
             try:
                 xp._shared_argv_cache.chmod(0o777)
             except PermissionError:
@@ -211,8 +211,7 @@ class DecoratedMain(NamesMixin):
         return xp.link.history
 
     def get_slurm_config(self) -> SlurmConfig:
-        """Return default Slurm config for the launch and grid actions.
-        """
+        """Return default Slurm config for the launch and grid actions."""
         return SlurmConfig()
 
 
@@ -228,8 +227,15 @@ class ArgparseMain(DecoratedMain):
             will translate to the command-line `--batch-size=32`,
             otherwise, it will stay as `--batch_size=32`.
     """
-    def __init__(self, main: MainFun, dora: DoraConfig, parser: argparse.ArgumentParser,
-                 slurm: tp.Optional[SlurmConfig] = None, use_underscore: bool = True):
+
+    def __init__(
+        self,
+        main: MainFun,
+        dora: DoraConfig,
+        parser: argparse.ArgumentParser,
+        slurm: tp.Optional[SlurmConfig] = None,
+        use_underscore: bool = True,
+    ):
         super().__init__(main, dora)
         self.parser = parser
         self.use_underscore = use_underscore
@@ -275,20 +281,22 @@ class ArgparseMain(DecoratedMain):
         return parts
 
     def get_slurm_config(self) -> SlurmConfig:
-        """Return default Slurm config for the launch and grid actions.
-        """
+        """Return default Slurm config for the launch and grid actions."""
         if self.slurm is not None:
             return self.slurm
         return super().get_slurm_config()
 
 
-def argparse_main(parser: argparse.ArgumentParser, *,
-                  dir: tp.Union[str, Path] = "./outputs",
-                  exclude: tp.Sequence[str] = [],
-                  slurm: tp.Optional[SlurmConfig] = None,
-                  shared: tp.Optional[tp.Union[str, Path]] = None,
-                  use_underscore: bool = True,
-                  **kwargs):
+def argparse_main(
+    parser: argparse.ArgumentParser,
+    *,
+    dir: tp.Union[str, Path] = "./outputs",
+    exclude: tp.Sequence[str] = [],
+    slurm: tp.Optional[SlurmConfig] = None,
+    shared: tp.Optional[tp.Union[str, Path]] = None,
+    use_underscore: bool = True,
+    **kwargs,
+):
     """Nicer version of `ArgparseMain` that acts like a decorator, and directly
     exposes the most useful configs to override.
 
@@ -304,11 +312,14 @@ def argparse_main(parser: argparse.ArgumentParser, *,
             otherwise, it will stay as `--batch_size=32`.
         **kwargs: extra args are passed to `DoraConfig`.
     """
+
     def _decorator(main: MainFun):
         dora = DoraConfig(
             dir=Path(dir),
             shared=None if shared is None else Path(shared),
             exclude=list(exclude),
-            **kwargs)
+            **kwargs,
+        )
         return ArgparseMain(main, dora, parser, use_underscore=use_underscore, slurm=slurm)
+
     return _decorator

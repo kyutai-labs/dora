@@ -4,8 +4,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Internal utilities, likely shouldn't be called from outside.
-"""
+"""Internal utilities, likely shouldn't be called from outside."""
+
 import os
 from pathlib import Path
 import sys
@@ -26,16 +26,20 @@ def _find_package(main_module: str, cwd: tp.Optional[Path] = None):
             if (child / f"{main_module}.py").exists():
                 candidates.append(child.name)
     if len(candidates) == 0:
-        fatal("Could not find a training package. Use -P, or set DORA_PACKAGE to set the "
-              "package. Use --main_module or set DORA_MAIN_MODULE to set the module to "
-              "be excecuted inside the defined package.")
+        fatal(
+            "Could not find a training package. Use -P, or set DORA_PACKAGE to set the "
+            "package. Use --main_module or set DORA_MAIN_MODULE to set the module to "
+            "be excecuted inside the defined package."
+        )
     elif len(candidates) == 1:
         return candidates[0]
     else:
-        fatal(f"Found multiple candidates: {', '.join(candidates)}. "
-              "Use -P, or set DORA_PACKAGE to set package being searched. "
-              "Use --main_module or set DORA_MAIN_MODULE to set the module being searched "
-              "inside the package.")
+        fatal(
+            f"Found multiple candidates: {', '.join(candidates)}. "
+            "Use -P, or set DORA_PACKAGE to set package being searched. "
+            "Use --main_module or set DORA_MAIN_MODULE to set the module being searched "
+            "inside the package."
+        )
 
 
 def get_main(main_module: tp.Optional[str] = None, package: tp.Optional[str] = None):
@@ -48,11 +52,11 @@ def get_main(main_module: tp.Optional[str] = None, package: tp.Optional[str] = N
     root = conf.root if conf is not None else Path(".").resolve()
 
     if main_module is None:
-        main_module = (os.environ.get('DORA_MAIN_MODULE')
-                       or (conf.main_module if conf else None)
-                       or 'train')
+        main_module = (
+            os.environ.get("DORA_MAIN_MODULE") or (conf.main_module if conf else None) or "train"
+        )
     if package is None:
-        package = os.environ.get('DORA_PACKAGE')
+        package = os.environ.get("DORA_PACKAGE")
         if package is None and conf is not None:
             package = conf.package
         if package is None:

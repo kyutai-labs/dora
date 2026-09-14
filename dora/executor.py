@@ -61,8 +61,7 @@ def start_ddp_workers(main, argv, num_workers: tp.Optional[int] = None):
 
     world_size = num_workers or th.cuda.device_count()
     if not world_size:
-        fatal(
-            "DDP is only available on GPU. Make sure GPUs are properly configured with cuda.")
+        fatal("DDP is only available on GPU. Make sure GPUs are properly configured with cuda.")
         sys.exit(1)
 
     xp = main.get_xp(argv)
@@ -74,17 +73,24 @@ def start_ddp_workers(main, argv, num_workers: tp.Optional[int] = None):
         for rank in range(world_size):
             kwargs: tp.Dict[str, tp.Any] = {}
             env = dict(os.environ)
-            env['RANK'] = str(rank)
-            env['LOCAL_RANK'] = str(rank)
-            env['WORLD_SIZE'] = str(world_size)
-            env['MASTER_ADDR'] = '127.0.0.1'
-            args = ["-m", "dora", "-P", main.package, "--main_module", main.main_module,
-                    "run", "--"]
+            env["RANK"] = str(rank)
+            env["LOCAL_RANK"] = str(rank)
+            env["WORLD_SIZE"] = str(world_size)
+            env["MASTER_ADDR"] = "127.0.0.1"
+            args = [
+                "-m",
+                "dora",
+                "-P",
+                main.package,
+                "--main_module",
+                main.main_module,
+                "run",
+                "--",
+            ]
             args += argv
             if rank > 0:
-                kwargs['stdin'] = sp.DEVNULL
-                kwargs['stdout'] = open(xp.folder / f'worker_{rank}.log', 'w')
-                kwargs['stderr'] = sp.STDOUT
-            manager.add(
-                sp.Popen([sys.executable] + args, env=env, **kwargs))
+                kwargs["stdin"] = sp.DEVNULL
+                kwargs["stdout"] = open(xp.folder / f"worker_{rank}.log", "w")
+                kwargs["stderr"] = sp.STDOUT
+            manager.add(sp.Popen([sys.executable] + args, env=env, **kwargs))
     sys.exit(int(manager.failed))

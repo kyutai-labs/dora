@@ -8,6 +8,7 @@
 The info commands gets the information on a Sheep or XP and can be used
 to retrieve the job status, logs etc.
 """
+
 from functools import partial
 import json
 import os

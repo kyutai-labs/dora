@@ -87,7 +87,7 @@ class _Reader:
                 if end < 0:
                     self.error("Unterminated interpolation")
                 self.pos = end + 1
-                out.append(self.text[start:self.pos])
+                out.append(self.text[start : self.pos])
                 trailing_space = 0
                 continue
             if ch == "\\" and self.pos + 1 < len(self.text):
@@ -100,7 +100,8 @@ class _Reader:
                     continue
             if ch in "()":
                 raise UnsupportedFeature(
-                    "Override functions/sweeps are not supported; quote literal parentheses")
+                    "Override functions/sweeps are not supported; quote literal parentheses"
+                )
             if ch in "[{'\"}=\n\r" or (key and ch == "$"):
                 self.error("Unexpected character (quote or escape literal punctuation)")
             if not (ch.isascii() and (ch.isalnum() or ch in "_-/\\+.$%*@?|: \t")):
@@ -163,7 +164,8 @@ def parse_value(text: str) -> Any:
     if reader.pos != len(text):
         if text[reader.pos] == ",":
             raise UnsupportedFeature(
-                "Choice sweeps are not supported; use a list or quote the comma")
+                "Choice sweeps are not supported; use a list or quote the comma"
+            )
         reader.error("Unexpected trailing input")
     return result
 
@@ -183,7 +185,7 @@ def parse_override(text: str) -> Override:
     operation = "set"
     for prefix, op in (("++", "force"), ("+", "add"), ("~", "delete")):
         if text.startswith(prefix):
-            text, operation = text[len(prefix):], op
+            text, operation = text[len(prefix) :], op
             break
     key, sep, value = text.partition("=")
     if not _KEY.fullmatch(key):

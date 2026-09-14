@@ -57,8 +57,9 @@ width="400px"></p>
 
 
 """
+
 __pdoc__ = {}
-__pdoc__['tests'] = False
+__pdoc__["tests"] = False
 
 __version__ = "0.2.0a1"
 
@@ -85,5 +86,6 @@ def __getattr__(name: str):
     """
     if name == "hydra_main":
         from .hydra import hydra_main
+
         return hydra_main
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

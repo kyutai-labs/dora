@@ -25,6 +25,7 @@ three outcomes: a signature that moved (a regression, always a failure), an
 experiment that stopped resolving (also a failure), and one that started
 resolving again (an improvement, reported but never a failure).
 """
+
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 import json
@@ -102,12 +103,12 @@ def iter_sigs(main) -> tp.List[str]:
     xps = main.dora.dir / main.dora.xps
     if not xps.is_dir():
         return []
-    return sorted(p.name for p in xps.iterdir()
-                  if SIG_RE.match(p.name) and (p / ".argv.json").exists())
+    return sorted(
+        p.name for p in xps.iterdir() if SIG_RE.match(p.name) and (p / ".argv.json").exists()
+    )
 
 
-def build(main, sigs: tp.Optional[tp.Sequence[str]] = None,
-          workers: int = 16) -> tp.List[Entry]:
+def build(main, sigs: tp.Optional[tp.Sequence[str]] = None, workers: int = 16) -> tp.List[Entry]:
     """Recompute every signature, in parallel. Hydra keeps global state, so each
     worker gets its own process; `DecoratedMain` pickles by dotted name."""
     if sigs is None:
@@ -146,8 +147,7 @@ def check(main, corpus: tp.List[Entry], workers: int = 16) -> Report:
                 # place: pre-existing damage, not a regression we introduced.
                 report.known_drift.append(old.sig)
             else:
-                report.drifted.append(
-                    (old.sig, f"expected {old.sig}, got {new.got_sig}"))
+                report.drifted.append((old.sig, f"expected {old.sig}, got {new.got_sig}"))
         else:  # ERROR
             if old.status == ERROR:
                 report.still_error.append(old.sig)
@@ -173,6 +173,7 @@ def load(path: Path) -> tp.List[Entry]:
 
 def _main(argv: tp.Optional[tp.List[str]] = None) -> int:
     from .._utils import get_main
+
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 2 or args[0] not in ("build", "check"):
         print(__doc__)

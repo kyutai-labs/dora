@@ -1,4 +1,5 @@
 """Persisted Slurm settings and targeted status actions, using a fake scheduler."""
+
 from argparse import Namespace
 from dataclasses import asdict
 import json
@@ -22,8 +23,9 @@ def launched(tmp_path, monkeypatch):
         shepherd = Shepherd(main)
         calls = []
         monkeypatch.setattr(_utils, "get_main", Mock(return_value=main))
-        monkeypatch.setattr(manage, "job_states",
-                            lambda ids: {job: FakeJob.watcher.jobs[job] for job in ids})
+        monkeypatch.setattr(
+            manage, "job_states", lambda ids: {job: FakeJob.watcher.jobs[job] for job in ids}
+        )
 
         def cancel(cmd, **kwargs):
             assert cmd[0] == "scancel"
@@ -43,17 +45,33 @@ def launch(main, shepherd, argv=(), **kwargs):
 
 
 def args(*targets, **kwargs):
-    values = dict(targets=list(targets), cancel=False, restart=False, dry_run=False,
-                  json=True, limit=None, main_module=None, package=None)
+    values = dict(
+        targets=list(targets),
+        cancel=False,
+        restart=False,
+        dry_run=False,
+        json=True,
+        limit=None,
+        main_module=None,
+        package=None,
+    )
     values.update(kwargs)
     return Namespace(**values)
 
 
 def test_snapshot_covers_arrays_dependents_and_last_success(launched, monkeypatch):
     main, shepherd, _ = launched
-    first, slurm = launch(main, shepherd, gpus=16, partition="custom", dependents=2,
-                          setup=["module load cuda"], srun_args=["--container-image=image"],
-                          container_chdir=True, nodelist=["node1", "node2"])
+    first, slurm = launch(
+        main,
+        shepherd,
+        gpus=16,
+        partition="custom",
+        dependents=2,
+        setup=["module load cuda"],
+        srun_args=["--container-image=image"],
+        container_chdir=True,
+        nodelist=["node1", "node2"],
+    )
     saved = first.xp.folder / "slurm.json"
     assert json.loads(saved.read_text()) == asdict(slurm)
     assert slurm.srun_args == ["--container-image=image"]
@@ -67,8 +85,9 @@ def test_snapshot_covers_arrays_dependents_and_last_success(launched, monkeypatc
     assert json.loads(saved.read_text()) == asdict(slurm)
     assert json.loads((second.xp.folder / "slurm.json").read_text()) == asdict(slurm)
     previous = saved.read_text()
-    monkeypatch.setattr(submitit.SlurmExecutor, "submit",
-                        Mock(side_effect=RuntimeError("submission failed")))
+    monkeypatch.setattr(
+        submitit.SlurmExecutor, "submit", Mock(side_effect=RuntimeError("submission failed"))
+    )
     slurm.partition = "will-fail"
     with pytest.raises(RuntimeError, match="submission failed"):
         shepherd._submit(_JobArray(slurm, [first]))
@@ -100,14 +119,24 @@ def test_cancel_only_selected_array_member_and_dependents(launched):
     assert other.state() != "CANCELLED"
     dependent, _ = launch(main, shepherd, ["--a=3"], dependents=2)
     assert inspect.status_action(args(dependent.xp.sig, cancel=True), main.dora) == 0
-    assert calls[-1] == ["scancel", dependent.job.job_id,
-                         *[job.job_id for job in dependent._dependent_jobs]]
+    assert calls[-1] == [
+        "scancel",
+        dependent.job.job_id,
+        *[job.job_id for job in dependent._dependent_jobs],
+    ]
 
 
 def test_restart_uses_saved_params_argv_and_keeps_checkpoint(launched, monkeypatch, capsys):
     main, shepherd, calls = launched
-    sheep, slurm = launch(main, shepherd, ["--a=5"], gpus=8, partition="saved",
-                          python="uv run --locked --no-editable python", dependents=1)
+    sheep, slurm = launch(
+        main,
+        shepherd,
+        ["--a=5"],
+        gpus=8,
+        partition="saved",
+        python="uv run --locked --no-editable python",
+        dependents=1,
+    )
     previous_job = sheep.job.job_id
     checkpoint = sheep.xp.folder / "checkpoint.th"
     checkpoint.write_bytes(b"checkpoint")
@@ -157,8 +186,7 @@ def test_preflight_prevents_partial_actions(launched, bad):
 def test_dry_run_does_not_cancel_or_submit(launched, action):
     main, shepherd, calls = launched
     sheep, _ = launch(main, shepherd)
-    assert inspect.status_action(
-        args(sheep.xp.sig, dry_run=True, **{action: True}), main.dora) == 0
+    assert inspect.status_action(args(sheep.xp.sig, dry_run=True, **{action: True}), main.dora) == 0
     assert calls == []
     assert len(FakeJob.watcher.jobs) == 1
 
@@ -170,8 +198,7 @@ def test_grid_targets_read_membership_and_limit_only_output(launched, capsys):
     for a in range(3):
         sheep, _ = launch(main, shepherd, [f"--a={a}"])
         (grid / sheep.xp.sig).symlink_to(sheep.xp.folder)
-    assert inspect.status_action(
-        args("missing.grid.module", cancel=True, limit=1), main.dora) == 0
+    assert inspect.status_action(args("missing.grid.module", cancel=True, limit=1), main.dora) == 0
     assert len(calls[0]) == 4
     result = json.loads(capsys.readouterr().out)
     assert result["count"] == 3 and result["shown"] == 1
@@ -189,11 +216,13 @@ def test_cli_actions_are_explicit_and_exclusive():
 
 def test_git_save_preparation_failure_does_not_cancel(launched, monkeypatch):
     from dora import git_save
+
     main, shepherd, calls = launched
     sheep, _ = launch(main, shepherd)
     main.dora.git_save = True
-    monkeypatch.setattr(git_save, "get_new_clone",
-                        Mock(side_effect=RuntimeError("clone setup failed")))
+    monkeypatch.setattr(
+        git_save, "get_new_clone", Mock(side_effect=RuntimeError("clone setup failed"))
+    )
     assert inspect.status_action(args(sheep.xp.sig, restart=True), main.dora) == 1
     assert calls == []
     assert len(FakeJob.watcher.jobs) == 1
@@ -202,7 +231,8 @@ def test_git_save_preparation_failure_does_not_cancel(launched, monkeypatch):
 def test_cancellation_failure_does_not_submit(launched, monkeypatch):
     main, shepherd, _ = launched
     sheep, _ = launch(main, shepherd)
-    monkeypatch.setattr(manage.sp, "run",
-                        Mock(side_effect=manage.sp.CalledProcessError(1, "scancel")))
+    monkeypatch.setattr(
+        manage.sp, "run", Mock(side_effect=manage.sp.CalledProcessError(1, "scancel"))
+    )
     assert inspect.status_action(args(sheep.xp.sig, restart=True), main.dora) == 1
     assert len(FakeJob.watcher.jobs) == 1

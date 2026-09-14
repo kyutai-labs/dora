@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-"HiPlot support."""
+"HiPlot support."
 
 from concurrent.futures import ProcessPoolExecutor
 import math
@@ -23,12 +23,13 @@ def roundf(value: float, precision: int = 4):
     """Round value but returned as float, to make display nicer in Hiplot."""
     if not math.isfinite(value):
         return value
-    return round(value * 10 ** precision) / 10**precision
+    return round(value * 10**precision) / 10**precision
 
 
 class HiPlotExplorer:
     """You can inherit this class in order to make custom HiPlotExplorer,
     for instance to select a subset of the metrics."""
+
     def process_metrics(self, xp: XP, metrics: tp.Dict[str, tp.Any]):
         return metrics
 
@@ -48,11 +49,11 @@ class STYLE:
     params = "badge badge-pill badge-dark"
 
 
-def _flatten(dct, out=None, prefix=''):
+def _flatten(dct, out=None, prefix=""):
     out = {} if out is None else out
     for key, value in dct.items():
         if isinstance(value, dict):
-            _flatten(value, out=out, prefix=prefix + key + '.')
+            _flatten(value, out=out, prefix=prefix + key + ".")
         else:
             out[prefix + key] = value
     return out
@@ -81,13 +82,13 @@ def load(uri: str) -> tp.Any:
     if grids_name is None:
         grids_name = main.package + ".grids"
     for token in shlex.split(uri):
-        if '=' in token:
-            key, value = token.split('=', 1)
-            if key == 'explorer':
+        if "=" in token:
+            key, value = token.split("=", 1)
+            if key == "explorer":
                 explorer_name = value
                 if explorer_module is None:
-                    explorer_module = grids_name + '._hiplot'
-            elif key == 'explorer_module':
+                    explorer_module = grids_name + "._hiplot"
+            elif key == "explorer_module":
                 explorer_module = value
             else:
                 raise ValueError(f"Invalid param {key}")
@@ -99,7 +100,7 @@ def load(uri: str) -> tp.Any:
         else:
             sigs.add(token)
     if explorer_module is None:
-        explorer_module = 'dora.hiplot'
+        explorer_module = "dora.hiplot"
     explorer_qualified = explorer_module + "." + explorer_name
     explorer_klass = pydoc.locate(explorer_qualified)
     assert explorer_klass is not None, explorer_qualified
@@ -132,54 +133,55 @@ def load(uri: str) -> tp.Any:
         values: tp.Dict[str, tp.Any] = {}
         for key, value in parts.items():
             if key not in reference:
-                sname = main.short_name_part(key, value).split('=', 1)[0]
+                sname = main.short_name_part(key, value).split("=", 1)[0]
                 values[sname] = value
                 exp.parameters_definition[sname].label_css = STYLE.params
         for key in all_columns:
             if key not in parts:
                 try:
-                    value = eval('xp.cfg.' + key, {'xp': xp})
+                    value = eval("xp.cfg." + key, {"xp": xp})
                 except AttributeError:
                     value = None
-                sname = main.short_name_part(key, value).split('=', 1)[0]
+                sname = main.short_name_part(key, value).split("=", 1)[0]
                 values[sname] = value
         for key, value in values.items():
             if isinstance(value, BaseContainer):
                 value = OmegaConf.to_container(value, resolve=True)
             if isinstance(value, list):
-                value = ', '.join(map(str, value))
+                value = ", ".join(map(str, value))
             values[key] = value
-        values['sig'] = xp.sig
+        values["sig"] = xp.sig
         from_uid: tp.Optional[str] = None
         xp.link.load()
         history = explorer.process_history(xp, xp.link.history)
         metric_names = set()
         for k, metrics in enumerate(history):
             point_values = dict(values)
-            point_values['epoch'] = k
-            point_values['last'] = k == len(xp.link.history) - 1
+            point_values["epoch"] = k
+            point_values["last"] = k == len(xp.link.history) - 1
             flat_metrics = _flatten(metrics)
             point_values.update(flat_metrics)
-            dp = hiplot.Datapoint(
-                uid=f"{xp.sig}_{k}",
-                from_uid=from_uid,
-                values=point_values)
+            dp = hiplot.Datapoint(uid=f"{xp.sig}_{k}", from_uid=from_uid, values=point_values)
             from_uid = dp.uid
             exp.datapoints.append(dp)
             for key in flat_metrics.keys():
                 metric_names.add(key)
                 exp.parameters_definition[key].label_css = STYLE.metrics
 
-    exp.display_data(hiplot.Displays.PARALLEL_PLOT).update({
-        'hide': ['from_uid', 'uid'],
-        'order': ['last', 'epoch'] + list(metric_names),
-    })
-    exp.display_data(hiplot.Displays.TABLE).update({
-        'hide': ['from_uid'],
-        'order': ['sig', 'last', 'epoch'] + list(metric_names),
-    })
-    exp.parameters_definition['epoch'].label_css = STYLE.internal
-    exp.parameters_definition['last'].label_css = STYLE.internal
-    exp.parameters_definition['sig'].label_css = STYLE.internal
+    exp.display_data(hiplot.Displays.PARALLEL_PLOT).update(
+        {
+            "hide": ["from_uid", "uid"],
+            "order": ["last", "epoch"] + list(metric_names),
+        }
+    )
+    exp.display_data(hiplot.Displays.TABLE).update(
+        {
+            "hide": ["from_uid"],
+            "order": ["sig", "last", "epoch"] + list(metric_names),
+        }
+    )
+    exp.parameters_definition["epoch"].label_css = STYLE.internal
+    exp.parameters_definition["last"].label_css = STYLE.internal
+    exp.parameters_definition["sig"].label_css = STYLE.internal
     explorer.postprocess_exp(exp)
     return exp

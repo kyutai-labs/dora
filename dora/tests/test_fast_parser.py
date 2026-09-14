@@ -1,4 +1,5 @@
 """Exercise the actual opt-in decorator, including task execution."""
+
 import json
 import logging
 from pathlib import Path
@@ -18,18 +19,21 @@ def config(tmp_path, monkeypatch):
     (tmp_path / "config.yaml").write_text(
         "defaults: [_self_, {solver: small}]\n"
         "lr: 0.01\noptim: {momentum: 0.9}\nvalues: [1, 2]\nalias: ${lr}\n"
-        "num_workers: 1\nslurm: {gpus: 2}\n")
+        "num_workers: 1\nslurm: {gpus: 2}\n"
+    )
     (tmp_path / "solver").mkdir()
     for name, width in (("small", 8), ("big", 16)):
         (tmp_path / "solver" / (name + ".yaml")).write_text(
-            f"# @package _global_\nwidth: {width}\n")
+            f"# @package _global_\nwidth: {width}\n"
+        )
     return tmp_path
 
 
 def make_main(root, flag="true", **kwargs):
     setting = f"use_fast_parser = {flag}\n" if flag else ""
     (root / "dora.toml").write_text(
-        "[project]\n" + setting + '[dora]\ndir = "outputs"\nexclude = ["num_workers"]\n')
+        "[project]\n" + setting + '[dora]\ndir = "outputs"\nexclude = ["num_workers"]\n'
+    )
 
     def task(cfg):
         assert cfg is get_xp().cfg
@@ -50,15 +54,22 @@ def test_hydra_stays_default(config, flag):
 def test_signatures_cache_and_file_changes(config):
     oracle = make_main(config, "false", version_base="1.1")
     fast = make_main(config, version_base="1.1")
-    for argv in ([], ["lr=0.1"], ["solver=big", "lr=0.1"], ["solver=small"],
-                 ["solver=big", "lr=0.2"], ["num_workers=4"],
-                 ["solver=big", "lr=0.1", "+extra=[1,2]"]):
+    for argv in (
+        [],
+        ["lr=0.1"],
+        ["solver=big", "lr=0.1"],
+        ["solver=small"],
+        ["solver=big", "lr=0.2"],
+        ["num_workers=4"],
+        ["solver=big", "lr=0.1", "+extra=[1,2]"],
+    ):
         reference, actual = oracle.get_xp(argv), fast.get_xp(argv)
         assert actual.sig == reference.sig
         assert actual.delta == reference.delta
         assert OmegaConf.to_container(actual.cfg) == OmegaConf.to_container(reference.cfg)
         assert OmegaConf.to_container(actual.cfg, resolve=True) == OmegaConf.to_container(
-            reference.cfg, resolve=True)
+            reference.cfg, resolve=True
+        )
     base, delta = fast._get_base_config(["solver=big"])
     delta.append(("oops", "value"))
     again, delta = fast._get_base_config(["solver=big", "lr=0.9"])
@@ -75,10 +86,15 @@ def test_signatures_cache_and_file_changes(config):
     assert fast.get_xp(["lr=0.5"]).sig == refreshed.get_xp(["lr=0.5"]).sig
 
 
-@pytest.mark.parametrize("kwargs, chdir", [
-    ({}, True), ({"version_base": "1.1"}, True),
-    ({"version_base": "1.3"}, False), ({"version_base": None}, False),
-])
+@pytest.mark.parametrize(
+    "kwargs, chdir",
+    [
+        ({}, True),
+        ({"version_base": "1.1"}, True),
+        ({"version_base": "1.3"}, False),
+        ({"version_base": None}, False),
+    ],
+)
 def test_execution_and_saved_config(config, monkeypatch, kwargs, chdir):
     main = make_main(config, **kwargs)
     monkeypatch.setattr(sys, "argv", ["train", "solver=big", "lr=0.3"])
@@ -156,13 +172,17 @@ def test_real_cli_without_hydra(config):
         "def main(cfg):\n"
         "    assert cfg.width == 16 and cfg.lr == 0.2\n"
         "    assert 'hydra' not in sys.modules\n"
-        "    (get_xp().folder / 'success').write_text(get_xp().sig)\n")
+        "    (get_xp().folder / 'success').write_text(get_xp().sig)\n"
+    )
     (config / "dora.toml").write_text(
-        '[project]\npackage = "fast_fixture"\nuse_fast_parser = true\n'
-        '[dora]\ndir = "outputs"\n')
+        '[project]\npackage = "fast_fixture"\nuse_fast_parser = true\n[dora]\ndir = "outputs"\n'
+    )
     result = subprocess.run(
         [sys.executable, "-B", "-m", "dora", "run", "solver=big", "lr=0.2"],
-        cwd=config, text=True, capture_output=True)
+        cwd=config,
+        text=True,
+        capture_output=True,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     folders = list((config / "outputs/xps").iterdir())
     assert len(folders) == 1 and (folders[0] / "success").exists()

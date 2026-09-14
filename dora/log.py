@@ -25,15 +25,18 @@ class LogProgress:
         - name (str): prefix to use in the log.
         - level: logging level (like `logging.INFO`).
     """
-    def __init__(self,
-                 logger: logging.Logger,
-                 iterable: Iterable,
-                 updates: int = 5,
-                 min_interval: int = 1,
-                 time_per_it: bool = False,
-                 total: tp.Optional[int] = None,
-                 name: str = "LogProgress",
-                 level: int = logging.INFO):
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        iterable: Iterable,
+        updates: int = 5,
+        min_interval: int = 1,
+        time_per_it: bool = False,
+        total: tp.Optional[int] = None,
+        name: str = "LogProgress",
+        level: int = logging.INFO,
+    ):
         self.iterable = iterable
         if total is None:
             assert isinstance(iterable, Sized)
@@ -87,7 +90,7 @@ class LogProgress:
         elif self.time_per_it:
             speed = f"{1000 / self._speed:.1f} ms/it"
         elif self._speed < 0.1:
-            speed = f"{1/self._speed:.1f} sec/it"
+            speed = f"{1 / self._speed:.1f} sec/it"
         else:
             speed = f"{self._speed:.2f} it/sec"
         out = f"{self.name} | {self._index}/{self.total} | {speed}"
@@ -103,6 +106,7 @@ def colorize(text: str, color: str) -> str:
     only when something is actually rendered -- stays off the import path.
     """
     from treetable.text import colorize as _colorize
+
     return _colorize(text, color)
 
 
@@ -114,8 +118,7 @@ def bold(text: str) -> str:
 
 
 def red(text: str) -> str:
-    """Display text in red.
-    """
+    """Display text in red."""
     # see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
     return colorize(text, "31")
 
@@ -135,16 +138,17 @@ _dora_handler = None
 def setup_logging(verbose=False):
     global _dora_handler  # I know this is dirty
     log_level = logging.DEBUG if verbose else logging.INFO
-    logger = logging.getLogger('dora')
+    logger = logging.getLogger("dora")
     logger.setLevel(log_level)
     _dora_handler = logging.StreamHandler(sys.stderr)
     _dora_handler.setFormatter(
-        logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'))
+        logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s")
+    )
     _dora_handler.setLevel(log_level)
     logger.addHandler(_dora_handler)
 
 
 def disable_logging():
     assert _dora_handler is not None
-    logger = logging.getLogger('dora')
+    logger = logging.getLogger("dora")
     logger.removeHandler(_dora_handler)

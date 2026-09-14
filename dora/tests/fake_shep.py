@@ -29,7 +29,7 @@ class FakeJob:
 
     def __init__(self):
         self.job_id = str(len(self.watcher.jobs))
-        self._state = 'UNKNOWN'
+        self._state = "UNKNOWN"
 
     @property
     def _state(self):

@@ -8,6 +8,7 @@
 Allow to export and import XP hyper-params using base64 encoded string.
 This allows easy sharing through paste, mails etc.
 """
+
 import base64
 from functools import partial
 import json
@@ -30,7 +31,7 @@ def dump(value):
 
 
 def load(b64):
-    b64 = "".join([line.strip() for line in b64.split('\n')])
+    b64 = "".join([line.strip() for line in b64.split("\n")])
     bits = base64.b64decode(b64)
     jsoned = zlib.decompress(bits)
     return json.loads(jsoned.decode())

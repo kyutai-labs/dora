@@ -26,8 +26,8 @@ def explore_2(launcher: Launcher):
 
 def test_shep(tmpdir):
     def rgrid(explore):
-        return run_grid(main, Explorer(explore), "unittest",
-                        slurm=slurm, rules=rules, args=args)
+        return run_grid(main, Explorer(explore), "unittest", slurm=slurm, rules=rules, args=args)
+
     with mock_shep():
         main = get_main(tmpdir)
         slurm = main.get_slurm_config()
@@ -75,16 +75,16 @@ def test_shep(tmpdir):
 
 
 def explore_hydra(launcher: Launcher):
-    launcher.bind_({'epochs': 50, 'optim.loss': '123', 'num_workers': None})
-    launcher({'complex.a': [{"test": "weird"}]})
-    launcher({'complex.b': {"a": 21, "b": 4}})
-    launcher({'+complex.b': {"a": 21, "b": 4, "c": 13}})
+    launcher.bind_({"epochs": 50, "optim.loss": "123", "num_workers": None})
+    launcher({"complex.a": [{"test": "weird"}]})
+    launcher({"complex.b": {"a": 21, "b": 4}})
+    launcher({"+complex.b": {"a": 21, "b": 4, "c": 13}})
 
 
 def test_shep_hydra(tmpdir):
     def rgrid(explore):
-        return run_grid(main, Explorer(explore), "unittest",
-                        rules=rules, args=args)
+        return run_grid(main, Explorer(explore), "unittest", rules=rules, args=args)
+
     HydraMain._slow = False
     with mock_shep():
         main = get_main_hydra(tmpdir)
@@ -97,7 +97,7 @@ def test_shep_hydra(tmpdir):
         assert len(sheeps) == 3
         cfg = sheeps[0].xp.cfg
         assert cfg.epochs == 50
-        assert cfg.optim.loss == '123'
+        assert cfg.optim.loss == "123"
         assert cfg.num_workers is None
         assert cfg.complex.a == [{"test": "weird"}]
 
@@ -116,6 +116,7 @@ def test_dry_run_writes_nothing(tmpdir):
     left behind an empty grid that afterwards looks like one someone launched
     and cancelled.
     """
+
     def snapshot(root):
         return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
 
@@ -126,8 +127,14 @@ def test_dry_run_writes_nothing(tmpdir):
         before = snapshot(root)
 
         args = RunGridArgs(monitor=False, dry_run=True, silent=True)
-        sheeps = run_grid(main, Explorer(explore_1), "unittest_dry",
-                          slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        sheeps = run_grid(
+            main,
+            Explorer(explore_1),
+            "unittest_dry",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=args,
+        )
 
         assert sheeps, "the explorer should still resolve experiments"
         assert snapshot(root) == before, "dry run touched the Dora directory"
@@ -142,13 +149,21 @@ def test_dry_run_with_init_writes_only_xp_caches(tmpdir):
         root.mkdir(exist_ok=True, parents=True)
 
         args = RunGridArgs(monitor=False, dry_run=True, init=True, silent=True)
-        sheeps = run_grid(main, Explorer(explore_1), "unittest_dry_init",
-                          slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        sheeps = run_grid(
+            main,
+            Explorer(explore_1),
+            "unittest_dry_init",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=args,
+        )
 
         written = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
         expected = sorted(
             f"{main.dora.xps}/{sheep.xp.sig}/{name}"
-            for sheep in sheeps for name in (".argv.json", ".delta.json"))
+            for sheep in sheeps
+            for name in (".argv.json", ".delta.json")
+        )
         assert written == expected
         # In particular, no grid folder and no Shepherd bookkeeping.
         assert not (root / main.dora._grids / "unittest_dry_init").exists()
@@ -177,15 +192,27 @@ def test_compact_grid_reports_stale_experiments(tmpdir, capsys):
     with mock_shep():
         main = get_main(tmpdir)
         args = RunGridArgs(monitor=False, dry_run=False, silent=True)
-        run_grid(main, Explorer(explore_1), "unittest_plan",
-                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        run_grid(
+            main,
+            Explorer(explore_1),
+            "unittest_plan",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=args,
+        )
         capsys.readouterr()
 
         # explore_2 produces a different XP, so everything explore_1 scheduled
         # is now stale.
         args = RunGridArgs(monitor=False, dry_run=True, compact=True)
-        run_grid(main, Explorer(explore_2), "unittest_plan",
-                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        run_grid(
+            main,
+            Explorer(explore_2),
+            "unittest_plan",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=args,
+        )
 
         out = capsys.readouterr().out
         # `run_grid` decides by `Sheep.is_done()`, and these are not done, so
@@ -202,8 +229,14 @@ def test_json_grid_output_is_parseable(tmpdir, capsys):
     with mock_shep():
         main = get_main(tmpdir)
         args = RunGridArgs(monitor=False, dry_run=True, json=True)
-        run_grid(main, Explorer(explore_1), "unittest_json",
-                 slurm=main.get_slurm_config(), rules=SubmitRules(), args=args)
+        run_grid(
+            main,
+            Explorer(explore_1),
+            "unittest_json",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=args,
+        )
         payload = json_module.loads(capsys.readouterr().out)
         # explore_1's two calls differ only in an excluded parameter, so they
         # share a signature and are one experiment.
@@ -223,20 +256,33 @@ def test_grid_records_its_metric_columns(tmpdir):
 
     class Metrics(Explorer):
         def get_grid_metrics(self):
-            return [tt.group("train", [tt.leaf("loss", ".3f")]),
-                    tt.group("valid", [tt.leaf("ce"), tt.leaf("ppl")])]
+            return [
+                tt.group("train", [tt.leaf("loss", ".3f")]),
+                tt.group("valid", [tt.leaf("ce"), tt.leaf("ppl")]),
+            ]
 
     with mock_shep():
         main = get_main(tmpdir)
-        run_grid(main, Metrics(explore_1), "unittest_spec",
-                 slurm=main.get_slurm_config(), rules=SubmitRules(),
-                 args=RunGridArgs(monitor=False, silent=True))
+        run_grid(
+            main,
+            Metrics(explore_1),
+            "unittest_spec",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=RunGridArgs(monitor=False, silent=True),
+        )
 
         spec = main.dora.dir / main.dora._grids / "unittest_spec" / METRIC_SPEC_NAME
         assert json_module.loads(spec.read_text())["columns"] == [
-            "train.loss", "valid.ce", "valid.ppl"]
+            "train.loss",
+            "valid.ce",
+            "valid.ppl",
+        ]
         assert load_metric_spec(main.dora, "unittest_spec") == [
-            "train.loss", "valid.ce", "valid.ppl"]
+            "train.loss",
+            "valid.ce",
+            "valid.ppl",
+        ]
 
 
 def test_dry_run_records_no_metric_spec(tmpdir):
@@ -245,9 +291,14 @@ def test_dry_run_records_no_metric_spec(tmpdir):
 
     with mock_shep():
         main = get_main(tmpdir)
-        run_grid(main, Explorer(explore_1), "unittest_spec_dry",
-                 slurm=main.get_slurm_config(), rules=SubmitRules(),
-                 args=RunGridArgs(monitor=False, silent=True, dry_run=True))
+        run_grid(
+            main,
+            Explorer(explore_1),
+            "unittest_spec_dry",
+            slurm=main.get_slurm_config(),
+            rules=SubmitRules(),
+            args=RunGridArgs(monitor=False, silent=True, dry_run=True),
+        )
         grid_folder = main.dora.dir / main.dora._grids / "unittest_spec_dry"
         assert not (grid_folder / METRIC_SPEC_NAME).exists()
         assert not grid_folder.exists()

@@ -1,4 +1,5 @@
 """Compose and print a config without importing Hydra."""
+
 import argparse
 import json
 
@@ -11,8 +12,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config-dir", required=True)
     parser.add_argument("--config-name", default="config")
-    parser.add_argument("--resolve", action="store_true",
-                        help="Resolve interpolations with OmegaConf")
+    parser.add_argument(
+        "--resolve", action="store_true", help="Resolve interpolations with OmegaConf"
+    )
     parser.add_argument("--format", choices=("yaml", "json"), default="yaml")
     parser.add_argument("overrides", nargs="*")
     args = parser.parse_args()

@@ -37,25 +37,73 @@ def assert_same(left, right):
         assert left == right
 
 
-@pytest.mark.parametrize("text", [
-    "", "null", "NuLl", "true", "False", "yes", "off", "01", "0x10", "1_000",
-    "1e-5", "-1e6", "+.5", "1.", "-inf", "NaN", "a b", "//reference/foo",
-    "'true'", '"01"', r'"a\nb"', r'"\u00e9"', "'café d’essai'", r'"a\\b"',
-    r"'a\'b'", r"a\,b", r"a\=b", r"a\ b", r"a\:b", r"C:\foo",
-    r"\ leading\ ", r"trailing\  ", r'"trailing\\"', r'"middle\\\"quote"',
-    "${optim.lr}", "${oc.env:USER,anonymous}", "prefix-${seed}", "[]", "{}",
-    "[1, 2e-5, null, false, yes, 'a,b', [3]]",
-    "{optim.lr:1e-5,a:[true,{b:foo}],str:01}",
-    "{null:foo,True:bar,10:baz}", "[${oc.env:USER,anonymous},foo]",
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "null",
+        "NuLl",
+        "true",
+        "False",
+        "yes",
+        "off",
+        "01",
+        "0x10",
+        "1_000",
+        "1e-5",
+        "-1e6",
+        "+.5",
+        "1.",
+        "-inf",
+        "NaN",
+        "a b",
+        "//reference/foo",
+        "'true'",
+        '"01"',
+        r'"a\nb"',
+        r'"\u00e9"',
+        "'café d’essai'",
+        r'"a\\b"',
+        r"'a\'b'",
+        r"a\,b",
+        r"a\=b",
+        r"a\ b",
+        r"a\:b",
+        r"C:\foo",
+        r"\ leading\ ",
+        r"trailing\  ",
+        r'"trailing\\"',
+        r'"middle\\\"quote"',
+        "${optim.lr}",
+        "${oc.env:USER,anonymous}",
+        "prefix-${seed}",
+        "[]",
+        "{}",
+        "[1, 2e-5, null, false, yes, 'a,b', [3]]",
+        "{optim.lr:1e-5,a:[true,{b:foo}],str:01}",
+        "{null:foo,True:bar,10:baz}",
+        "[${oc.env:USER,anonymous},foo]",
+    ],
+)
 def test_cli_values_match_hydra(text):
     expected = OverridesParser.create().parse_override("x=" + text).value()
     assert_same(parse_value(text), expected)
 
 
-@pytest.mark.parametrize("text", [
-    "x=1,2", "x=range(1,4)", "x=[1,]", "x={a:}", "x='oops", "x=[1", "x=[1]junk", "x", "=1",
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "x=1,2",
+        "x=range(1,4)",
+        "x=[1,]",
+        "x={a:}",
+        "x='oops",
+        "x=[1",
+        "x=[1]junk",
+        "x",
+        "=1",
+    ],
+)
 def test_invalid_and_unsupported_overrides(text):
     with pytest.raises(ConfigError):
         parse_override(text)
@@ -63,7 +111,10 @@ def test_invalid_and_unsupported_overrides(text):
 
 @pytest.fixture
 def config(tmp_path):
-    write(tmp_path, "config", """defaults:
+    write(
+        tmp_path,
+        "config",
+        """defaults:
   - _self_
   - data: first
   - solver: default
@@ -77,11 +128,15 @@ alias: ${mapping}
 interpolated: ${x}
 scientific: 1e-5
 date: 2026-09-09
-""")
+""",
+    )
     write(tmp_path, "data/first", "# @package _global_\ndata: first\n")
     write(tmp_path, "data/second", "# @package __global__\ndata: second\n")
     write(tmp_path, "solver/default", "# @package _global_\nsolver: base\n")
-    write(tmp_path, "solver/deep/main", """# @package _global_
+    write(
+        tmp_path,
+        "solver/deep/main",
+        """# @package _global_
 defaults:
   - /solver/default
   - /model: default
@@ -90,21 +145,40 @@ defaults:
   - _self_
 solver: deep
 x: 2
-""")
+""",
+    )
     write(tmp_path, "model/default", "# @package _global_\ndefaults:\n  - /scale: big\nwidth: 20\n")
     write(tmp_path, "scale/big", "# @package _global_\nwidth: 100\n")
     write(tmp_path, "scale/small", "# @package _global_\nwidth: 10\n")
     return tmp_path
 
 
-@pytest.mark.parametrize("overrides", [
-    [], ["solver=deep/main"], ["solver=deep/main", "data=first", "scale=big"],
-    ["x=4", "interpolated=8"], ["+new.path=5"], ["++mapping.a=3"],
-    ["mapping={a:9}"], ["+mapping={c:3}"], ["mapping=null"], ["+nullable=4"],
-    ["+missing=4"], ["items=[4]"], ["items.1=9"], ["~mapping.a=1"], ["~x"],
-    ["~data"], ["~data=first"], ["+scale=small"],
-    ["x=3", "x=4"], ["mapping.a=???"], ["+nullable.deep=true"],
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        [],
+        ["solver=deep/main"],
+        ["solver=deep/main", "data=first", "scale=big"],
+        ["x=4", "interpolated=8"],
+        ["+new.path=5"],
+        ["++mapping.a=3"],
+        ["mapping={a:9}"],
+        ["+mapping={c:3}"],
+        ["mapping=null"],
+        ["+nullable=4"],
+        ["+missing=4"],
+        ["items=[4]"],
+        ["items.1=9"],
+        ["~mapping.a=1"],
+        ["~x"],
+        ["~data"],
+        ["~data=first"],
+        ["+scale=small"],
+        ["x=3", "x=4"],
+        ["mapping.a=???"],
+        ["+nullable.deep=true"],
+    ],
+)
 def test_composition_matches_hydra(config, overrides):
     parser = ConfigParser(config)
     expected = oracle(config, overrides)
@@ -115,15 +189,27 @@ def test_composition_matches_hydra(config, overrides):
         with pytest.raises(type(exc)):
             OmegaConf.to_container(parser.compose_config(overrides), resolve=True)
     else:
-        assert_same(OmegaConf.to_container(parser.compose_config(overrides), resolve=True),
-                    resolved)
+        assert_same(
+            OmegaConf.to_container(parser.compose_config(overrides), resolve=True), resolved
+        )
 
 
-@pytest.mark.parametrize("overrides", [
-    ["typo=4"], ["mapping={typo:4}"], ["+x=4"], ["~nullable"], ["~x=42"],
-    ["scale=small"], ["data=absent"], ["~data=second"], ["items.4=1"],
-    ["solver=deep/main", "+scale=small"], ["data=null"],
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        ["typo=4"],
+        ["mapping={typo:4}"],
+        ["+x=4"],
+        ["~nullable"],
+        ["~x=42"],
+        ["scale=small"],
+        ["data=absent"],
+        ["~data=second"],
+        ["items.4=1"],
+        ["solver=deep/main", "+scale=small"],
+        ["data=null"],
+    ],
+)
 def test_rejects_invalid_compositions_like_hydra(config, overrides):
     with pytest.raises(Exception):
         oracle(config, overrides)
@@ -154,8 +240,9 @@ def test_package_rules(tmp_path, header, relocation):
     write(tmp_path, "config", "defaults:\n  - parent: default\n")
     write(tmp_path, "parent/default", f"defaults:\n  - child{relocation}: first\nouter: 1\n")
     write(tmp_path, "parent/child/first", header + "value: 2\n")
-    assert_same(ConfigParser(tmp_path).compose(),
-                OmegaConf.to_container(oracle(tmp_path), resolve=False))
+    assert_same(
+        ConfigParser(tmp_path).compose(), OmegaConf.to_container(oracle(tmp_path), resolve=False)
+    )
 
 
 def test_relocated_group_override(tmp_path):
@@ -163,8 +250,9 @@ def test_relocated_group_override(tmp_path):
     write(tmp_path, "db/a", "port: 1\n")
     write(tmp_path, "db/b", "port: 2\n")
     args = ["db@src=b"]
-    assert_same(ConfigParser(tmp_path).compose(args),
-                OmegaConf.to_container(oracle(tmp_path, args)))
+    assert_same(
+        ConfigParser(tmp_path).compose(args), OmegaConf.to_container(oracle(tmp_path, args))
+    )
 
 
 def test_self_order_and_missing_merge(tmp_path):
@@ -173,11 +261,18 @@ def test_self_order_and_missing_merge(tmp_path):
     assert_same(ConfigParser(tmp_path).compose(), OmegaConf.to_container(oracle(tmp_path)))
 
 
-@pytest.mark.parametrize("text", [
-    "defaults: [config]", "defaults: [_self_, _self_]", "x: 1\nx: 2",
-    "defaults: [{unknown: ???}]", "defaults: [{data: '${other}'}]",
-    "hydra: {searchpath: [pkg://elsewhere]}", "defaults: [{data: [a, b]}]",
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "defaults: [config]",
+        "defaults: [_self_, _self_]",
+        "x: 1\nx: 2",
+        "defaults: [{unknown: ???}]",
+        "defaults: [{data: '${other}'}]",
+        "hydra: {searchpath: [pkg://elsewhere]}",
+        "defaults: [{data: [a, b]}]",
+    ],
+)
 def test_bad_configs_are_explicit(tmp_path, text):
     write(tmp_path, "config", text)
     with pytest.raises(ConfigError):
@@ -218,8 +313,9 @@ def test_relative_defaults_are_relative_to_selected_group(tmp_path):
     write(tmp_path, "solver/arflow/base", "defaults: [leaf]\nvalue: 2\n")
     write(tmp_path, "solver/arflow/leaf", "leaf: 3\n")
     args = []
-    assert_same(ConfigParser(tmp_path).compose(args),
-                OmegaConf.to_container(oracle(tmp_path, args)))
+    assert_same(
+        ConfigParser(tmp_path).compose(args), OmegaConf.to_container(oracle(tmp_path, args))
+    )
 
 
 def test_relative_parent_include_within_config_root(tmp_path):

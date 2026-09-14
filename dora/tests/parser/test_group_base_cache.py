@@ -13,7 +13,10 @@ def write(root, name, content):
 
 @pytest.fixture
 def root(tmp_path):
-    write(tmp_path, "config", """defaults:
+    write(
+        tmp_path,
+        "config",
+        """defaults:
   - _self_
   - solver: small
   - optional extra: absent
@@ -22,11 +25,15 @@ optim: {momentum: 0.9}
 values: [1, 2]
 alias: ${lr}
 environment: ${oc.env:DORA_PARSER_CACHE_TEST,unset}
-""")
+""",
+    )
     write(tmp_path, "common", "# @package _global_\nshared: 1\n")
     for name, width in (("small", 8), ("big", 16)):
-        write(tmp_path, "solver/" + name,
-              f"# @package _global_\ndefaults: [/common]\nwidth: {width}\n")
+        write(
+            tmp_path,
+            "solver/" + name,
+            f"# @package _global_\ndefaults: [/common]\nwidth: {width}\n",
+        )
     return tmp_path
 
 

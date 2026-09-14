@@ -20,8 +20,7 @@ from .xp import get_xp
 logger = logging.getLogger(__name__)
 
 
-DistribSpec = namedtuple(
-    "DistribSpec", "rank world_size local_rank node_rank num_nodes source")
+DistribSpec = namedtuple("DistribSpec", "rank world_size local_rank node_rank num_nodes source")
 
 
 def set_distrib_env():
@@ -31,22 +30,24 @@ def set_distrib_env():
     some other framework handle the distributed initialization.
     """
     spec = get_distrib_spec()
-    if spec.world_size == 1 and not os.environ.get('DORA_FORCE_DISTRIB'):
+    if spec.world_size == 1 and not os.environ.get("DORA_FORCE_DISTRIB"):
         return
-    if 'MASTER_ADDR' not in os.environ:
-        assert 'SLURM_JOB_NODELIST' in os.environ, "case not handled"
-        nodelist = os.environ['SLURM_JOB_NODELIST']
+    if "MASTER_ADDR" not in os.environ:
+        assert "SLURM_JOB_NODELIST" in os.environ, "case not handled"
+        nodelist = os.environ["SLURM_JOB_NODELIST"]
         from submitit.slurm.slurm import _parse_node_list
+
         nodes = _parse_node_list(nodelist)
         master_node = nodes[0]
-        os.environ['MASTER_ADDR'] = master_node
-    if 'MASTER_PORT' not in os.environ:
+        os.environ["MASTER_ADDR"] = master_node
+    if "MASTER_PORT" not in os.environ:
         xp = get_xp()
         # Note that running twice the same XP on the same node will crash,
         # but that shouldn't really happen
         seed = xp.sig
         # If we are in a Slurm job, let us use the Slurm job id.
         import submitit
+
         try:
             env = submitit.JobEnvironment()
         except RuntimeError:
@@ -55,22 +56,22 @@ def set_distrib_env():
             seed += env.job_id
         rng = random.Random(seed)
         master_port = rng.randint(20000, 60000)
-        os.environ['MASTER_PORT'] = str(master_port)
-    if 'WORLD_SIZE' not in os.environ:
-        os.environ['WORLD_SIZE'] = str(spec.world_size)
-        os.environ['RANK'] = str(spec.rank)
-        os.environ['LOCAL_RANK'] = str(spec.local_rank)
+        os.environ["MASTER_PORT"] = str(master_port)
+    if "WORLD_SIZE" not in os.environ:
+        os.environ["WORLD_SIZE"] = str(spec.world_size)
+        os.environ["RANK"] = str(spec.rank)
+        os.environ["LOCAL_RANK"] = str(spec.local_rank)
 
 
 def get_distrib_spec():
     """Return information on the distributed setup, i.e. world size, rank etc.
     This can be used even before distributed training is initialized.
     """
-    if 'WORLD_SIZE' in os.environ:
-        rank = int(os.environ['RANK'])
-        world_size = int(os.environ['WORLD_SIZE'])
-        if 'LOCAL_RANK' in os.environ:
-            local_rank = int(os.environ['LOCAL_RANK'])
+    if "WORLD_SIZE" in os.environ:
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+        if "LOCAL_RANK" in os.environ:
+            local_rank = int(os.environ["LOCAL_RANK"])
         else:
             local_rank = rank
         node_rank = 0
@@ -78,6 +79,7 @@ def get_distrib_spec():
         source = "env"
     else:
         import submitit
+
         try:
             env = submitit.JobEnvironment()
         except RuntimeError:
@@ -97,36 +99,39 @@ def get_distrib_spec():
     return DistribSpec(rank, world_size, local_rank, node_rank, num_nodes, source)
 
 
-def init(backend='nccl'):
+def init(backend="nccl"):
     """
     Initialize DDP.
     """
     import torch
+
     if torch.distributed.is_initialized():
         return
     spec = get_distrib_spec()
-    if spec.world_size == 1 and not os.environ.get('DORA_FORCE_DISTRIB'):
+    if spec.world_size == 1 and not os.environ.get("DORA_FORCE_DISTRIB"):
         logger.info("world_size is 1, skipping init.")
         return
     xp = get_xp()
     if torch.cuda.is_available():
         torch.cuda.set_device(spec.local_rank)
     else:
-        assert backend != 'nccl'
+        assert backend != "nccl"
 
     if xp.dora.use_rendezvous:
-        init_method = 'file://' + os.path.abspath(xp.rendezvous_file)
+        init_method = "file://" + os.path.abspath(xp.rendezvous_file)
     else:
         set_distrib_env()
-        init_method = 'env://'
+        init_method = "env://"
     torch.distributed.init_process_group(
-        backend=backend,
-        init_method=init_method,
-        world_size=spec.world_size,
-        rank=spec.rank)
+        backend=backend, init_method=init_method, world_size=spec.world_size, rank=spec.rank
+    )
     logger.info(
         "Distributed init: %d/%d (local %d) from %s",
-        spec.rank, spec.world_size, spec.local_rank, spec.source)
+        spec.rank,
+        spec.world_size,
+        spec.local_rank,
+        spec.source,
+    )
     if xp.dora.use_rendezvous:
         torch.distributed.barrier()
         if rank() == 0:
@@ -140,6 +145,7 @@ def is_master():
 
 def rank():
     import torch
+
     if torch.distributed.is_initialized():
         return torch.distributed.get_rank()
     else:
@@ -148,6 +154,7 @@ def rank():
 
 def world_size():
     import torch
+
     if torch.distributed.is_initialized():
         return torch.distributed.get_world_size()
     else:

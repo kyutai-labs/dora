@@ -35,12 +35,13 @@ def run_command(command, **kwargs):
         else:
             command_str = " ".join(shlex.quote(c) for c in command)
         raise CommandError(
-            f"Command {command_str} failed ({proc.returncode}): \n" + proc.stdout.decode())
+            f"Command {command_str} failed ({proc.returncode}): \n" + proc.stdout.decode()
+        )
     return proc.stdout.decode().strip()
 
 
 def check_repo_clean(root: Path, main: DecoratedMain):
-    out = run_command(['git', 'status', '--porcelain'])
+    out = run_command(["git", "status", "--porcelain"])
     filtered = []
     # Here we try to detect the grids package and allow uncommitted changes
     # only to that folder. The rational is that as we edit the grid file, it is a pain
@@ -78,22 +79,24 @@ def check_repo_clean(root: Path, main: DecoratedMain):
         if not line_clean:
             filtered.append(line)
     if filtered:
-        files = '\n'.join(filtered)
-        fatal("Repository is not clean! The following files should be commited "
-              f"or git ignored: \n {files}")
+        files = "\n".join(filtered)
+        fatal(
+            "Repository is not clean! The following files should be commited "
+            f"or git ignored: \n {files}"
+        )
 
 
 def get_git_root():
-    return Path(run_command(['git', 'rev-parse', '--show-toplevel'])).resolve()
+    return Path(run_command(["git", "rev-parse", "--show-toplevel"])).resolve()
 
 
-def get_git_commit(repo: Path = Path('.')):
-    return run_command(['git', 'log', '-1', '--format=%H'], cwd=repo)
+def get_git_commit(repo: Path = Path(".")):
+    return run_command(["git", "log", "-1", "--format=%H"], cwd=repo)
 
 
 def shallow_clone(source: Path, target: Path):
     tmp_target = target.parent / (target.name + ".tmp")
-    run_command(['git', 'clone', '--depth=1', 'file://' + str(source), str(tmp_target)])
+    run_command(["git", "clone", "--depth=1", "file://" + str(source), str(tmp_target)])
     # We are not sure that there wasn't a new commit in between, so to make
     # sure the folder name is correct, we clone to a temporary name, then rename to the
     # actual commit in there. It seems there is no easy way to directly make a shallow
@@ -124,9 +127,10 @@ def get_new_clone(main: DecoratedMain) -> Path:
     elif main.dora.local_code:
         if not tar_file.exists():
             raise RuntimeError(
-                f'Repository clone {target} already exists, but tar file {tar_file} does not. '
-                'This could happen if you interrupted a previous dora command before it completed. '
-                'To resolve the issue, please delete {target} and retry.')
+                f"Repository clone {target} already exists, but tar file {tar_file} does not. "
+                "This could happen if you interrupted a previous dora command before it completed. "
+                "To resolve the issue, please delete {target} and retry."
+            )
     assert target.exists()
     return target
 
@@ -136,17 +140,17 @@ def enter_clone(clone: Path):
     """Context manager that temporarily relocates to a clean clone of the
     current git repository.
     """
-    cwd = Path('.').resolve()
+    cwd = Path(".").resolve()
     root = get_git_root()
     relative_path = cwd.relative_to(root)
 
-    os.environ['_DORA_ORIGINAL_DIR'] = str(cwd)
+    os.environ["_DORA_ORIGINAL_DIR"] = str(cwd)
     os.chdir(clone / relative_path)
     try:
         yield
     finally:
         os.chdir(cwd)
-        del os.environ['_DORA_ORIGINAL_DIR']
+        del os.environ["_DORA_ORIGINAL_DIR"]
 
 
 def assign_clone(xp: XP, clone: Path):
@@ -156,7 +160,7 @@ def assign_clone(xp: XP, clone: Path):
         if code.is_symlink():
             code.unlink()
         elif code.is_dir():
-            code.rename(code.parent / 'old_code')
+            code.rename(code.parent / "old_code")
         else:
             assert "code folder should be symlink or folder", code
     code.symlink_to(clone)
@@ -197,7 +201,7 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
     """
     klass = type(path)
     _path = Path(path)
-    if '_DORA_ORIGINAL_DIR' not in os.environ:
+    if "_DORA_ORIGINAL_DIR" not in os.environ:
         # We did not use git_save, we check first if Hydra is used,
         # in which case we use it to convert to an absolute Path.
         # Looked up rather than imported: Hydra's version only differs from
@@ -209,7 +213,7 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
         run_cwd = _run_cwd.get()
         if run_cwd is not None:
             return klass(_path if _path.is_absolute() else run_cwd / _path)
-        hydra_utils = sys.modules.get('hydra.utils')
+        hydra_utils = sys.modules.get("hydra.utils")
         if hydra_utils is None:
             if not _path.is_absolute():
                 _path = Path(os.getcwd()) / _path
@@ -218,7 +222,7 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
         return klass(_path)
     else:
         # We used git_save, in which case we used the original dir saved by Dora.
-        original_cwd = Path(os.environ['_DORA_ORIGINAL_DIR'])
+        original_cwd = Path(os.environ["_DORA_ORIGINAL_DIR"])
         if _path.is_absolute():
             return klass(_path)
         else:

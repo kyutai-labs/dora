@@ -35,6 +35,7 @@ unset rather than guessed at, and callers fall back to importing the project.
 
 The file is optional. Without it everything behaves as before, just slower.
 """
+
 from dataclasses import fields
 import os
 from pathlib import Path
@@ -111,7 +112,8 @@ class ProjectConfig:
         self.use_fast_parser: bool = project.get("use_fast_parser", False)
         if not isinstance(self.use_fast_parser, bool):
             raise ProjectConfigError(
-                f"{path}: [project] use_fast_parser must be a boolean (true or false)")
+                f"{path}: [project] use_fast_parser must be a boolean (true or false)"
+            )
         self.hydra_kwargs: dict = project.get("hydra", {})
         self._dora: dict = raw.get("dora", {})
 
@@ -131,14 +133,15 @@ class ProjectConfig:
         unknown = set(self._dora) - known
         if unknown:
             raise ProjectConfigError(
-                f"{self.path}: unknown [dora] keys: {', '.join(sorted(unknown))}")
+                f"{self.path}: unknown [dora] keys: {', '.join(sorted(unknown))}"
+            )
 
         probes = self._dora.get("dir_probe", [])
-        values = {key: _interpolate(value)
-                  for key, value in self._dora.items() if key != "dir_probe"}
+        values = {
+            key: _interpolate(value) for key, value in self._dora.items() if key != "dir_probe"
+        }
         directory = values.get("dir")
-        if directory is not None and (isinstance(directory, _Unresolved)
-                                      or not str(directory)):
+        if directory is not None and (isinstance(directory, _Unresolved) or not str(directory)):
             directory = None
         if directory is None:
             # Fall back to probing: the first entry whose `probe` path exists
@@ -151,7 +154,8 @@ class ProjectConfig:
                     marker, candidate = entry["probe"], entry["dir"]
                 except (KeyError, TypeError):
                     raise ProjectConfigError(
-                        f"{self.path}: each [[dora.dir_probe]] needs `probe` and `dir`.")
+                        f"{self.path}: each [[dora.dir_probe]] needs `probe` and `dir`."
+                    )
                 if Path(_interpolate(marker)).exists():
                     candidate = _interpolate(candidate)
                     if not isinstance(candidate, _Unresolved) and str(candidate):
@@ -181,6 +185,7 @@ def load(start: tp.Optional[Path] = None) -> tp.Optional[ProjectConfig]:
     if path is None:
         return None
     import tomllib
+
     with open(path, "rb") as fileobj:
         raw = tomllib.load(fileobj)
     return ProjectConfig(path, raw)

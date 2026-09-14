@@ -10,6 +10,7 @@ The point of these commands is that their output is cheap and safe to read
 programmatically, so most of what is worth testing is the output discipline:
 caps, no colour, no pathological lines.
 """
+
 import json
 import time as _time
 
@@ -73,8 +74,7 @@ def test_history_is_downsampled_not_dumped(dora, capsys):
     history = [{"valid": {"ce": 1.0 / (i + 1), "noise": i}} for i in range(500)]
     make_xp(dora, "cccccccc", history=history)
 
-    args = _Args(targets=["cccccccc"], stage="valid", keys="ce", every=None,
-                 limit=None, json=False)
+    args = _Args(targets=["cccccccc"], stage="valid", keys="ce", every=None, limit=None, json=False)
     assert inspect.metrics_action(args, dora) == 0
     out = capsys.readouterr().out
     assert len(out.splitlines()) <= inspect.MAX_METRIC_ROWS + 2
@@ -85,8 +85,7 @@ def test_history_is_downsampled_not_dumped(dora, capsys):
 def test_every_samples_across_the_whole_run(dora, capsys):
     history = [{"valid": {"ce": float(i)}} for i in range(100)]
     make_xp(dora, "dddddddd", history=history)
-    args = _Args(targets=["dddddddd"], stage="valid", keys="ce", every=25,
-                 limit=None, json=False)
+    args = _Args(targets=["dddddddd"], stage="valid", keys="ce", every=25, limit=None, json=False)
     inspect.metrics_action(args, dora)
     epochs = [line.split()[0] for line in capsys.readouterr().out.splitlines()[2:]]
     assert epochs == ["1", "26", "51", "76"]
@@ -98,10 +97,10 @@ def test_log_strips_colour_and_cuts_giant_lines(dora, capsys):
     folder = make_xp(dora, "eeeeeeee")
     (folder / "submitit").mkdir()
     (folder / "submitit" / "1_0_log.out").write_text(
-        "\x1b[36mcoloured\x1b[0m\n" + "x" * 5000 + "\n")
+        "\x1b[36mcoloured\x1b[0m\n" + "x" * 5000 + "\n"
+    )
 
-    args = _Args(targets=["eeeeeeee"], limit=10, grep=None, rank=None, job=None,
-                 json=False)
+    args = _Args(targets=["eeeeeeee"], limit=10, grep=None, rank=None, job=None, json=False)
     assert inspect.log_action(args, dora) == 0
     out = capsys.readouterr().out
     assert "\x1b" not in out
@@ -116,7 +115,8 @@ def test_why_reports_the_cause_once_across_ranks(dora, capsys):
     (folder / "submitit").mkdir()
     for rank in range(8):
         (folder / "submitit" / f"42_{rank}_log.out").write_text(
-            f"[2026-01-0{rank}] step\ntorch.OutOfMemoryError: CUDA out of memory\n")
+            f"[2026-01-0{rank}] step\ntorch.OutOfMemoryError: CUDA out of memory\n"
+        )
 
     args = _Args(targets=["ffffffff"], job=None, json=False, limit=None, attempts=3)
     assert inspect.why_action(args, dora) == 0
@@ -160,7 +160,9 @@ def test_traceback_stops_at_the_exception(dora, capsys):
         '  File "train.py", line 1, in main\n'
         "    boom()\n"
         "ZeroDivisionError: float division by zero\n"
-        + "\n".join(f"NCCL INFO teardown line {i}" for i in range(200)) + "\n")
+        + "\n".join(f"NCCL INFO teardown line {i}" for i in range(200))
+        + "\n"
+    )
 
     args = _Args(targets=["11111111"], job=None, json=False, limit=None, attempts=3)
     assert inspect.why_action(args, dora) == 0
@@ -182,9 +184,11 @@ def test_why_looks_back_through_earlier_attempts(dora, capsys):
     (folder / "submitit" / "400_0_log.out").write_text(
         "Traceback (most recent call last):\n"
         '  File "train.py", line 1, in main\n'
-        "FileNotFoundError: no such data\n")
+        "FileNotFoundError: no such data\n"
+    )
     (folder / "submitit" / "900_0_log.out").write_text("all good\ndone\n")
     import os
+
     now = _time.time()
     os.utime(folder / "submitit" / "400_0_log.out", (now - 500, now - 500))
     os.utime(folder / "submitit" / "900_0_log.out", (now, now))
@@ -215,6 +219,7 @@ def log_attempt_names(target, current_job=None):
 def test_mode_follows_stdout_when_no_flag_is_given(monkeypatch):
     """Neither audience should have to remember a flag: a terminal gets the
     readable rendering, a pipe gets the one a script can consume."""
+
     class _Out:
         def __init__(self, tty):
             self._tty = tty
@@ -256,7 +261,9 @@ def test_columns_line_up_even_when_coloured(monkeypatch):
     plain = inspect.columns([["ab", "c"], ["d", "ef"]], ["h1", "h2"], inspect.COMPACT)
     coloured = inspect.columns(
         [[inspect.paint("ab", "31", inspect.PRETTY), "c"], ["d", "ef"]],
-        ["h1", "h2"], inspect.PRETTY)
+        ["h1", "h2"],
+        inspect.PRETTY,
+    )
     assert [inspect.ANSI_RE.sub("", ln) for ln in coloured] == plain
 
 
@@ -277,7 +284,7 @@ def test_log_keeps_colour_only_when_pretty(dora, capsys, monkeypatch):
 
     inspect.log_action(_Args(**base, json=True), dora)
     payload = json.loads(capsys.readouterr().out)
-    assert payload["lines"] == ["hello"]      # never escape codes in JSON
+    assert payload["lines"] == ["hello"]  # never escape codes in JSON
 
 
 def test_status_uses_the_columns_the_grid_recorded(dora, capsys):
@@ -286,14 +293,13 @@ def test_status_uses_the_columns_the_grid_recorded(dora, capsys):
     grid = dora.dir / dora._grids / "some.grid"
     grid.mkdir(parents=True)
     (grid / inspect.METRIC_SPEC_NAME).write_text(
-        json.dumps({"columns": ["valid.ce", "train.loss"]}))
+        json.dumps({"columns": ["valid.ce", "train.loss"]})
+    )
     for sig in ("aaaaaaaa", "bbbbbbbb"):
-        make_xp(dora, sig, history=[{"train": {"loss": 1.0, "noise": 9.0},
-                                     "valid": {"ce": 2.0}}])
+        make_xp(dora, sig, history=[{"train": {"loss": 1.0, "noise": 9.0}, "valid": {"ce": 2.0}}])
         (grid / sig).symlink_to(dora.dir / dora.xps / sig)
 
-    args = _Args(targets=["some.grid"], keys=None, limit=None, json=False,
-                 compact=True, sort=None)
+    args = _Args(targets=["some.grid"], keys=None, limit=None, json=False, compact=True, sort=None)
     assert inspect.status_action(args, dora) == 0
     header = capsys.readouterr().out.splitlines()[1]
     assert "valid.ce" in header and "train.loss" in header
@@ -302,8 +308,7 @@ def test_status_uses_the_columns_the_grid_recorded(dora, capsys):
 
 def test_status_falls_back_when_the_grid_recorded_nothing(dora, capsys):
     make_xp(dora, "cccccccc", history=[{"valid": {"loss": 1.0}}])
-    args = _Args(targets=["cccccccc"], keys=None, limit=None, json=False,
-                 compact=True, sort=None)
+    args = _Args(targets=["cccccccc"], keys=None, limit=None, json=False, compact=True, sort=None)
     assert inspect.status_action(args, dora) == 0
     assert "loss" in capsys.readouterr().out
 
@@ -314,12 +319,14 @@ def test_status_ignores_recorded_columns_nothing_logged(dora, capsys):
     grid = dora.dir / dora._grids / "derived.grid"
     grid.mkdir(parents=True)
     (grid / inspect.METRIC_SPEC_NAME).write_text(
-        json.dumps({"columns": ["train.best_ce", "train.ping"]}))
+        json.dumps({"columns": ["train.best_ce", "train.ping"]})
+    )
     make_xp(dora, "dddddddd", history=[{"train": {"loss": 0.5}}])
     (grid / "dddddddd").symlink_to(dora.dir / dora.xps / "dddddddd")
 
-    args = _Args(targets=["derived.grid"], keys=None, limit=None, json=False,
-                 compact=True, sort=None)
+    args = _Args(
+        targets=["derived.grid"], keys=None, limit=None, json=False, compact=True, sort=None
+    )
     assert inspect.status_action(args, dora) == 0
     header = capsys.readouterr().out.splitlines()[1]
     assert "best_ce" not in header
@@ -329,8 +336,7 @@ def test_status_ignores_recorded_columns_nothing_logged(dora, capsys):
 def test_one_column_per_metric_family():
     """`ce_q1`..`ce_q5` are one metric wearing five hats; a real 74-metric
     experiment used to spend every column on them."""
-    sample = {"ce": 1, "ce_q1": 1, "ce_q2": 1, "ce_q3": 1, "ppl": 1,
-              "audio_ce": 1, "max_mem": 1}
+    sample = {"ce": 1, "ce_q1": 1, "ce_q2": 1, "ce_q3": 1, "ppl": 1, "audio_ce": 1, "max_mem": 1}
     chosen = inspect.choose_metric_keys([sample], 4)
     assert "ce" in chosen
     assert not any(k.startswith("ce_q") for k in chosen)

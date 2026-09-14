@@ -21,6 +21,7 @@ post-process. Diagnostics go to stderr so stdout stays parseable.
 Read-only invocations do not import the project when a `dora.toml` supplies the
 experiment directory -- see `dora.project`.
 """
+
 from collections import OrderedDict
 from dataclasses import dataclass, field
 import json
@@ -95,14 +96,23 @@ def paint(text: str, colour: str, mode: str) -> str:
     if not use_colour(mode):
         return text
     from .log import colorize
+
     return colorize(text, colour)
 
 
 # Slurm states worth telling apart at a glance.
 _STATE_COLOURS = {
-    "RUNNING": "32", "COMPLETED": "32", "PENDING": "33", "REQUEUED": "33",
-    "FAILED": "31", "TIMEOUT": "31", "OUT_OF_MEMORY": "31", "NODE_FAIL": "31",
-    "CANCELLED": "90", "MISSING": "90", "N/A": "90",
+    "RUNNING": "32",
+    "COMPLETED": "32",
+    "PENDING": "33",
+    "REQUEUED": "33",
+    "FAILED": "31",
+    "TIMEOUT": "31",
+    "OUT_OF_MEMORY": "31",
+    "NODE_FAIL": "31",
+    "CANCELLED": "90",
+    "MISSING": "90",
+    "N/A": "90",
 }
 
 
@@ -121,8 +131,7 @@ def note(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def emit(lines: tp.Sequence[str], as_json: tp.Any = None,
-         mode: str = COMPACT) -> None:
+def emit(lines: tp.Sequence[str], as_json: tp.Any = None, mode: str = COMPACT) -> None:
     """The single way anything here writes to stdout."""
     if as_json is not None:
         print(json.dumps(as_json, separators=(",", ":"), default=str))
@@ -130,8 +139,7 @@ def emit(lines: tp.Sequence[str], as_json: tp.Any = None,
     text = "\n".join(lines)
     limit = cap(MAX_TOTAL_CHARS, mode)
     if len(text) > limit:
-        text = (text[:limit]
-                + "\n... output truncated, narrow with --keys/--limit/--pattern")
+        text = text[:limit] + "\n... output truncated, narrow with --keys/--limit/--pattern"
     print(text)
 
 
@@ -141,7 +149,7 @@ def elide(text: str, width: int) -> str:
         return text
     keep = width - 3
     head = (keep + 1) // 2
-    return text[:head] + "..." + text[len(text) - (keep - head):]
+    return text[:head] + "..." + text[len(text) - (keep - head) :]
 
 
 def elide_parts(name: str, width: int) -> str:
@@ -181,8 +189,9 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _visible_len(text))
 
 
-def columns(rows: tp.List[tp.List[str]], headers: tp.List[str],
-            mode: str = COMPACT) -> tp.List[str]:
+def columns(
+    rows: tp.List[tp.List[str]], headers: tp.List[str], mode: str = COMPACT
+) -> tp.List[str]:
     """Fixed-width columns, no box drawing. Colour only in pretty mode."""
     if not rows:
         return []
@@ -251,9 +260,11 @@ class Resolution:
     problems: tp.List[str] = field(default_factory=list)
 
 
-def resolve_targets(tokens: tp.Sequence[str], dora: DoraConfig,
-                    grid_module_exists: tp.Optional[tp.Callable[[str], bool]] = None
-                    ) -> Resolution:
+def resolve_targets(
+    tokens: tp.Sequence[str],
+    dora: DoraConfig,
+    grid_module_exists: tp.Optional[tp.Callable[[str], bool]] = None,
+) -> Resolution:
     """Turn user-supplied tokens into experiments.
 
     A token may be a signature, a grid name, a Slurm job id, or `@sig` to force
@@ -300,13 +311,13 @@ def resolve_targets(tokens: tp.Sequence[str], dora: DoraConfig,
             continue
         # A grid that exists as a file but was never launched, or a typo.
         if grid_module_exists is not None and grid_module_exists(token):
-            out.problems.append(
-                f"grid {token} has never been launched (no experiments recorded)")
+            out.problems.append(f"grid {token} has never been launched (no experiments recorded)")
         else:
             hint = _closest(token, grids_root)
             out.problems.append(
                 f"no signature, grid or job id {token!r}"
-                + (f"; did you mean {hint}?" if hint else ""))
+                + (f"; did you mean {hint}?" if hint else "")
+            )
     return out
 
 
@@ -314,6 +325,7 @@ def _closest(token: str, grids_root: Path, limit: int = 3) -> str:
     if not grids_root.is_dir():
         return ""
     import difflib
+
     names = [p.name for p in grids_root.iterdir()]
     return ", ".join(difflib.get_close_matches(token, names, n=limit, cutoff=0.5))
 
@@ -321,6 +333,7 @@ def _closest(token: str, grids_root: Path, limit: int = 3) -> str:
 def read_json(path: Path, retries: int = 1) -> tp.Any:
     """Read a JSON file that a running job may be rewriting underneath us."""
     import time
+
     for attempt in range(retries + 1):
         try:
             with open(path) as fileobj:
@@ -344,9 +357,12 @@ def job_states(job_ids: tp.Sequence[str]) -> tp.Dict[str, str]:
     if not ids:
         return {}
     try:
-        proc = sp.run(["sacct", "-X", "--parsable2", "-n", "-o", "JobID,State",
-                       "-j", ",".join(ids)],
-                      capture_output=True, check=True, timeout=30)
+        proc = sp.run(
+            ["sacct", "-X", "--parsable2", "-n", "-o", "JobID,State", "-j", ",".join(ids)],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
     except (OSError, sp.SubprocessError):
         return {}
     states = {}
@@ -376,8 +392,9 @@ def last_activity(folder: Path) -> tp.Optional[float]:
 # ---------------------------------------------------------------- history
 
 
-def flatten_history(history: tp.List[dict], stage: tp.Optional[str] = None
-                    ) -> tp.List[tp.Tuple[int, dict]]:
+def flatten_history(
+    history: tp.List[dict], stage: tp.Optional[str] = None
+) -> tp.List[tp.Tuple[int, dict]]:
     """`[(epoch, metrics)]` for one stage, epochs 1-based as Dora counts them."""
     out = []
     for index, entry in enumerate(history, start=1):
@@ -404,8 +421,9 @@ def pick_stage(history: tp.List[dict]) -> tp.Optional[str]:
     return sorted(present)[0] if present else None
 
 
-def summarise(folder: Path, keys: tp.Sequence[str] = (),
-              prefixed: bool = False) -> tp.Tuple[int, dict]:
+def summarise(
+    folder: Path, keys: tp.Sequence[str] = (), prefixed: bool = False
+) -> tp.Tuple[int, dict]:
     """Epoch count and last metrics, without loading more than needed.
 
     With `prefixed`, metrics from every stage are returned as `stage.metric`,
@@ -443,9 +461,13 @@ def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
         for key in sample:
             if key not in seen:
                 seen.append(key)
-    ranked = sorted(seen, key=lambda k: (
-        min((i for i, p in enumerate(preferred) if p in k.lower()), default=len(preferred)),
-        len(k)))
+    ranked = sorted(
+        seen,
+        key=lambda k: (
+            min((i for i, p in enumerate(preferred) if p in k.lower()), default=len(preferred)),
+            len(k),
+        ),
+    )
     chosen: tp.List[str] = []
     families: tp.Set[str] = set()
     for key in ranked:
@@ -466,6 +488,7 @@ def metric_spec_columns(explorer: tp.Any) -> tp.List[str]:
     not, and the path to a leaf is exactly the path into the dict that
     `process_sheep` returns.
     """
+
     def walk(nodes: tp.Any, prefix: str = "") -> tp.Iterator[str]:
         for node in nodes or []:
             name = prefix + str(node.key)
@@ -494,7 +517,8 @@ def save_metric_spec(grid_folder: Path, explorer: tp.Any) -> None:
         return
     try:
         (grid_folder / METRIC_SPEC_NAME).write_text(
-            json.dumps({"columns": columns}, separators=(",", ":")))
+            json.dumps({"columns": columns}, separators=(",", ":"))
+        )
     except OSError:
         pass  # a cache; never worth failing a launch over
 
@@ -513,8 +537,7 @@ def load_metric_spec(dora: DoraConfig, grid: tp.Optional[str]) -> tp.List[str]:
 # ---------------------------------------------------------------- actions
 
 
-def _xp_names(dora: DoraConfig,
-              targets: tp.List[Target]) -> tp.Tuple[tp.Dict[str, str], str]:
+def _xp_names(dora: DoraConfig, targets: tp.List[Target]) -> tp.Tuple[tp.Dict[str, str], str]:
     """Short names for a set of experiments, plus the part they all share.
 
     Factoring the common overrides into a single header line is what keeps the
@@ -539,6 +562,7 @@ def _xp_names(dora: DoraConfig,
 def status_action(args: tp.Any, dora: DoraConfig) -> int:
     if getattr(args, "cancel", False) or getattr(args, "restart", False):
         from .manage import status_action as manage_status
+
         return manage_status(args, dora)
     resolution = resolve_targets(args.targets, dora)
     for problem in resolution.problems:
@@ -580,23 +604,24 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         epoch, metrics = summarise(target.folder, wanted, prefixed=prefixed)
         stamp = last_activity(target.folder)
         job_id = jobs[target.sig]
-        records.append({
-            "index": index,
-            "sig": target.sig,
-            "name": names.get(target.sig, target.sig),
-            # "?": the job existed once but Slurm has no record of it now.
-            # Accounting databases get reset, which is routine rather than
-            # exceptional, so this is common for anything old.
-            "state": states.get(job_id, "-" if not job_id else "?"),
-            "job": job_id,
-            "epoch": epoch,
-            "ping": None if stamp is None else round(_now() - stamp, 1),
-            "metrics": metrics,
-        })
+        records.append(
+            {
+                "index": index,
+                "sig": target.sig,
+                "name": names.get(target.sig, target.sig),
+                # "?": the job existed once but Slurm has no record of it now.
+                # Accounting databases get reset, which is routine rather than
+                # exceptional, so this is common for anything old.
+                "state": states.get(job_id, "-" if not job_id else "?"),
+                "job": job_id,
+                "epoch": epoch,
+                "ping": None if stamp is None else round(_now() - stamp, 1),
+                "metrics": metrics,
+            }
+        )
 
     if mode == JSON:
-        emit([], as_json={"count": len(targets), "shown": len(shown),
-                          "experiments": records})
+        emit([], as_json={"count": len(targets), "shown": len(shown), "experiments": records})
         return 0
 
     # A recorded column that no experiment actually logged is noise: an
@@ -605,21 +630,23 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
     present = {k for r in records for k in r["metrics"]}
     metric_keys = wanted or [k for k in spec if k in present]
     if not metric_keys:
-        metric_keys = choose_metric_keys([r["metrics"] for r in records],
-                                         cap(4, mode))
-    metric_keys = metric_keys[:cap(MAX_METRIC_COLS, mode)]
+        metric_keys = choose_metric_keys([r["metrics"] for r in records], cap(4, mode))
+    metric_keys = metric_keys[: cap(MAX_METRIC_COLS, mode)]
     headers = ["#", "sig", "name", "state", "job", "ep", "ping"] + metric_keys
     rows = []
     for record in records:
-        rows.append([
-            str(record["index"]),
-            record["sig"],
-            elide_parts(record["name"], cap(MAX_NAME_CHARS, mode)),
-            paint_state(record["state"], mode),
-            record["job"] or "-",
-            str(record["epoch"]),
-            "-" if record["ping"] is None else ago(record["ping"]),
-        ] + [fmt(record["metrics"].get(k, "-")) for k in metric_keys])
+        rows.append(
+            [
+                str(record["index"]),
+                record["sig"],
+                elide_parts(record["name"], cap(MAX_NAME_CHARS, mode)),
+                paint_state(record["state"], mode),
+                record["job"] or "-",
+                str(record["epoch"]),
+                "-" if record["ping"] is None else ago(record["ping"]),
+            ]
+            + [fmt(record["metrics"].get(k, "-")) for k in metric_keys]
+        )
 
     lines = []
     grids = {t.grid for t in shown if t.grid}
@@ -633,17 +660,19 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
     tally: tp.Dict[str, int] = {}
     for record in records:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
-    lines.append(" | ".join(f"{state.lower()} {count}"
-                            for state, count in sorted(tally.items())))
+    lines.append(" | ".join(f"{state.lower()} {count}" for state, count in sorted(tally.items())))
     if "?" in tally:
-        lines.append("? = Slurm has no record of the job; its accounting "
-                     "database has most likely been reset since it ran.")
+        lines.append(
+            "? = Slurm has no record of the job; its accounting "
+            "database has most likely been reset since it ran."
+        )
     emit(lines, mode=mode)
     return 0
 
 
 def _now() -> float:
     import time
+
     return time.time()
 
 
@@ -667,25 +696,39 @@ def metrics_action(args: tp.Any, dora: DoraConfig) -> int:
 
     mode = output_mode(args)
     if args.every:
-        rows = rows[::args.every]
+        rows = rows[:: args.every]
     limit = args.limit or cap(MAX_METRIC_ROWS, mode)
     total = len(rows)
     if len(rows) > limit:
         rows = rows[-limit:]
 
-    keys = ([k.strip() for k in args.keys.split(",")] if args.keys
-            else choose_metric_keys([m for _, m in rows], cap(MAX_METRIC_COLS, mode)))
+    keys = (
+        [k.strip() for k in args.keys.split(",")]
+        if args.keys
+        else choose_metric_keys([m for _, m in rows], cap(MAX_METRIC_COLS, mode))
+    )
 
     if mode == JSON:
-        emit([], as_json={
-            "sig": target.sig, "stage": stage, "epochs": len(history),
-            "rows": [{"epoch": e, **{k: m.get(k) for k in keys}} for e, m in rows]})
+        emit(
+            [],
+            as_json={
+                "sig": target.sig,
+                "stage": stage,
+                "epochs": len(history),
+                "rows": [{"epoch": e, **{k: m.get(k) for k in keys}} for e, m in rows],
+            },
+        )
         return 0
 
-    table = columns([[str(epoch)] + [fmt(metrics.get(k, "-")) for k in keys]
-                     for epoch, metrics in rows], ["ep"] + keys, mode)
-    lines = [f"{target.sig} {stage}  {len(history)} epochs"
-             + (f", showing {len(rows)} of {total}" if len(rows) < total else "")]
+    table = columns(
+        [[str(epoch)] + [fmt(metrics.get(k, "-")) for k in keys] for epoch, metrics in rows],
+        ["ep"] + keys,
+        mode,
+    )
+    lines = [
+        f"{target.sig} {stage}  {len(history)} epochs"
+        + (f", showing {len(rows)} of {total}" if len(rows) < total else "")
+    ]
     lines += table
     emit(lines, mode=mode)
     return 0
@@ -694,8 +737,9 @@ def metrics_action(args: tp.Any, dora: DoraConfig) -> int:
 # ---------------------------------------------------------------- logs
 
 
-def log_files(target: Target, rank: tp.Optional[int] = None,
-              job_id: tp.Optional[str] = None) -> tp.List[Path]:
+def log_files(
+    target: Target, rank: tp.Optional[int] = None, job_id: tp.Optional[str] = None
+) -> tp.List[Path]:
     """Every log for an experiment, most recently written first.
 
     Dora runs submitit with `stderr_to_stdout`, so there are no `.err` files;
@@ -715,16 +759,15 @@ def log_files(target: Target, rank: tp.Optional[int] = None,
     else:
         found += sorted(target.folder.glob(f"solver.log.{rank}"))
     found += sorted(target.folder.glob("train.log"))
-    return sorted({p for p in found if p.is_file()},
-                  key=lambda p: p.stat().st_mtime, reverse=True)
+    return sorted({p for p in found if p.is_file()}, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 LOG_NAME_RE = re.compile(r"^(?P<job>\d+(?:_\d+)?)_(?P<task>\d+)_log\.out$")
 
 
-def log_attempts(target: Target,
-                 current_job: tp.Optional[str] = None
-                 ) -> tp.List[tp.Tuple[str, tp.List[Path]]]:
+def log_attempts(
+    target: Target, current_job: tp.Optional[str] = None
+) -> tp.List[tp.Tuple[str, tp.List[Path]]]:
     """Group an experiment's logs by the job attempt that produced them.
 
     An experiment is usually run more than once -- requeued, resubmitted after a
@@ -780,8 +823,9 @@ def clean(line: str, mode: str = COMPACT) -> str:
         line = ANSI_RE.sub("", line)
     limit = cap(MAX_LINE_CHARS, mode)
     if _visible_len(line) > limit:
-        return ANSI_RE.sub("", line)[:limit // 2] + \
-            f" ...[+{_visible_len(line) - limit // 2} chars]"
+        return (
+            ANSI_RE.sub("", line)[: limit // 2] + f" ...[+{_visible_len(line) - limit // 2} chars]"
+        )
     return line
 
 
@@ -798,8 +842,7 @@ def tail(path: Path, count: int, mode: str = COMPACT) -> tp.List[str]:
             size -= step
             fileobj.seek(size)
             data = fileobj.read(step) + data
-    return [clean(ln, mode)
-            for ln in data.decode(errors="replace").splitlines()[-count:]]
+    return [clean(ln, mode) for ln in data.decode(errors="replace").splitlines()[-count:]]
 
 
 def log_action(args: tp.Any, dora: DoraConfig) -> int:
@@ -823,8 +866,14 @@ def log_action(args: tp.Any, dora: DoraConfig) -> int:
         lines = [ln for ln in lines if pattern.search(ANSI_RE.sub("", ln))][-count:]
     if mode == JSON:
         # JSON never carries escape codes, whatever the terminal is doing.
-        emit([], as_json={"sig": target.sig, "file": str(path),
-                          "lines": [ANSI_RE.sub("", ln) for ln in lines]})
+        emit(
+            [],
+            as_json={
+                "sig": target.sig,
+                "file": str(path),
+                "lines": [ANSI_RE.sub("", ln) for ln in lines],
+            },
+        )
         return 0
     header = f"{target.sig} {path.name} (last {len(lines)} lines)"
     emit([paint(header, "1", mode)] + lines, mode=mode)
@@ -838,8 +887,11 @@ FAILURE_PATTERNS: tp.List[tp.Tuple[str, str]] = [
     ("hydra config error", r"MissingConfigException|ConfigCompositionException"),
     ("NCCL / collective timeout", r"NCCL.*(timeout|error)|Watchdog caught|ProcessGroupNCCL"),
     ("could not start the job", r"execve\(\)|command not found|No such file or directory"),
-    ("killed by Slurm", r"DUE TO TIME LIMIT|CANCELLED AT|oom-kill|slurmstepd: error"
-                        r"|srun: error"),
+    (
+        "killed by Slurm",
+        r"DUE TO TIME LIMIT|CANCELLED AT|oom-kill|slurmstepd: error"
+        r"|srun: error",
+    ),
 ]
 
 
@@ -852,9 +904,11 @@ def classify(lines: tp.Sequence[str]) -> tp.Optional[str]:
 
 
 # Lines that continue a traceback rather than ending it.
-_CHAINED = ("During handling of the above exception",
-            "The above exception was the direct cause",
-            "Traceback (most recent call last)")
+_CHAINED = (
+    "During handling of the above exception",
+    "The above exception was the direct cause",
+    "Traceback (most recent call last)",
+)
 
 
 def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
@@ -871,13 +925,16 @@ def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
     Middle frames are almost always framework plumbing, so the top (where it
     started) and the bottom (where it broke) are kept and the rest counted.
     """
-    starts = [i for i, line in enumerate(lines)
-              if line.lstrip().startswith("Traceback (most recent call last)")]
+    starts = [
+        i
+        for i, line in enumerate(lines)
+        if line.lstrip().startswith("Traceback (most recent call last)")
+    ]
     if not starts:
         return []
 
     block = [lines[starts[-1]]]
-    for line in lines[starts[-1] + 1:]:
+    for line in lines[starts[-1] + 1 :]:
         if not line.strip() or line.startswith((" ", "\t")):
             block.append(line)
             continue
@@ -919,8 +976,9 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     if args.job:
         attempts = [(name, paths) for name, paths in attempts if name == args.job]
 
-    states = job_states([name for name, _ in attempts if name.isdigit()]
-                        + ([current_job] if current_job else []))
+    states = job_states(
+        [name for name, _ in attempts if name.isdigit()] + ([current_job] if current_job else [])
+    )
     current_state = states.get(current_job, "?") if current_job else "-"
 
     # Walk attempts newest first and stop at the first one that explains
@@ -951,21 +1009,28 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
                 if patterns:
                     expr = re.compile(patterns[0], re.IGNORECASE)
                     evidence = [ln for ln in lines if expr.search(ln)][-3:]
-            findings.append({"attempt": name, "file": path.name,
-                             "cause": label, "traceback": evidence})
+            findings.append(
+                {"attempt": name, "file": path.name, "cause": label, "traceback": evidence}
+            )
         if findings:
             culprit = name
             break
 
     if mode == JSON:
-        emit([], as_json={"sig": target.sig, "job": current_job,
-                          "state": current_state, "attempt": culprit,
-                          "attempts": [name for name, _ in attempts],
-                          "findings": findings})
+        emit(
+            [],
+            as_json={
+                "sig": target.sig,
+                "job": current_job,
+                "state": current_state,
+                "attempt": culprit,
+                "attempts": [name for name, _ in attempts],
+                "findings": findings,
+            },
+        )
         return 0
 
-    header = (f"{target.sig}  job {current_job or '-'}  state "
-              + paint_state(current_state, mode))
+    header = f"{target.sig}  job {current_job or '-'}  state " + paint_state(current_state, mode)
     jobs = [name for name, _ in attempts if name.isdigit()]
     if len(jobs) > 1:
         header += f"  ({len(jobs)} attempts: " + " ".join(jobs[:6]) + ")"
@@ -985,9 +1050,11 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
 
     attempt_state = states.get(culprit or "", "")
     if culprit and culprit != current_job and culprit.isdigit():
-        lines.append(f"failure is from attempt {culprit}"
-                     + (f" ({attempt_state})" if attempt_state else "")
-                     + f", not the current job {current_job or '-'}")
+        lines.append(
+            f"failure is from attempt {culprit}"
+            + (f" ({attempt_state})" if attempt_state else "")
+            + f", not the current job {current_job or '-'}"
+        )
     # Ranks fail together, so report the cause once and count the rest.
     seen: tp.Set[str] = set()
     for finding in findings:
@@ -996,8 +1063,9 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f"[{finding['file']}] "
-                     + paint(str(finding["cause"] or "traceback"), "31", mode))
+        lines.append(
+            f"[{finding['file']}] " + paint(str(finding["cause"] or "traceback"), "31", mode)
+        )
         lines += finding["traceback"]
         if len(seen) >= 2:
             break
@@ -1008,9 +1076,14 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     return 0
 
 
-def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str],
-                base_name: str, lines: tp.Sequence[dict],
-                stale: tp.Sequence[tp.Any] = ()) -> None:
+def render_grid(
+    args: tp.Any,
+    herd: tp.Sequence[tp.Any],
+    names: tp.Sequence[str],
+    base_name: str,
+    lines: tp.Sequence[dict],
+    stale: tp.Sequence[tp.Any] = (),
+) -> None:
     """Compact rendering of a grid, for `dora grid --compact` / `--json`.
 
     The treetable this replaces is built for a human watching a terminal: it is
@@ -1028,14 +1101,16 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
             for key, value in values.items():
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     metrics[f"{group}.{key}" if group else key] = value
-        records.append({
-            "index": index,
-            "sig": sheep.xp.sig,
-            "name": name or sheep.xp.sig,
-            "state": meta.get("state", "N/A"),
-            "job": meta.get("sid", "") or "",
-            "metrics": metrics,
-        })
+        records.append(
+            {
+                "index": index,
+                "sig": sheep.xp.sig,
+                "name": name or sheep.xp.sig,
+                "state": meta.get("state", "N/A"),
+                "job": meta.get("sid", "") or "",
+                "metrics": metrics,
+            }
+        )
 
     # A stale experiment that is still running gets cancelled; one that already
     # finished is only dropped from the grid and keeps its results. Conflating
@@ -1048,19 +1123,31 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
     mode = output_mode(args)
     if mode == JSON:
         wanted = getattr(args, "limit", None)
-        emit([], as_json={"experiments": records[:wanted] if wanted else records,
-                          "base_name": base_name,
-                          "would_cancel": live_stale, "would_drop": done_stale})
+        emit(
+            [],
+            as_json={
+                "experiments": records[:wanted] if wanted else records,
+                "base_name": base_name,
+                "would_cancel": live_stale,
+                "would_drop": done_stale,
+            },
+        )
         return
 
     limit = getattr(args, "limit", None) or cap(MAX_ROWS, mode)
     shown = records[:limit]  # only the rendered form is capped; JSON left above
     metric_keys = choose_metric_keys([r["metrics"] for r in shown], cap(4, mode))
-    rows = [[str(r["index"]), r["sig"],
-             elide_parts(r["name"], cap(MAX_NAME_CHARS, mode)),
-             paint_state(r["state"], mode), r["job"] or "-"]
-            + [fmt(r["metrics"].get(k, "-")) for k in metric_keys]
-            for r in shown]
+    rows = [
+        [
+            str(r["index"]),
+            r["sig"],
+            elide_parts(r["name"], cap(MAX_NAME_CHARS, mode)),
+            paint_state(r["state"], mode),
+            r["job"] or "-",
+        ]
+        + [fmt(r["metrics"].get(k, "-")) for k in metric_keys]
+        for r in shown
+    ]
 
     out = []
     if base_name:
@@ -1071,15 +1158,20 @@ def render_grid(args: tp.Any, herd: tp.Sequence[tp.Any], names: tp.Sequence[str]
     tally: tp.Dict[str, int] = {}
     for record in records:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
-    out.append(" | ".join(f"{state.lower()} {count}"
-                          for state, count in sorted(tally.items())))
+    out.append(" | ".join(f"{state.lower()} {count}" for state, count in sorted(tally.items())))
     if live_stale:
-        out.append(paint("WARNING:", "31", mode)
-                   + f" {len(live_stale)} running experiment(s) would be CANCELLED, "
-                   "the grid no longer produces them: " + " ".join(live_stale[:10])
-                   + (" ..." if len(live_stale) > 10 else ""))
+        out.append(
+            paint("WARNING:", "31", mode)
+            + f" {len(live_stale)} running experiment(s) would be CANCELLED, "
+            "the grid no longer produces them: "
+            + " ".join(live_stale[:10])
+            + (" ..." if len(live_stale) > 10 else "")
+        )
     if done_stale:
-        out.append(f"{len(done_stale)} finished experiment(s) would be dropped from the "
-                   "grid (results kept): " + " ".join(done_stale[:10])
-                   + (" ..." if len(done_stale) > 10 else ""))
+        out.append(
+            f"{len(done_stale)} finished experiment(s) would be dropped from the "
+            "grid (results kept): "
+            + " ".join(done_stale[:10])
+            + (" ..." if len(done_stale) > 10 else "")
+        )
     emit(out, mode=mode)

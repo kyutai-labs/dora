@@ -1,4 +1,5 @@
 """Profile OmegaConf costs on the Audium grid without changing either library."""
+
 import argparse
 from collections import Counter
 from copy import deepcopy
@@ -70,14 +71,18 @@ def profile_stage(function, inputs, repeat, path):
     calls = len(inputs) * repeat
     functions = []
     for (filename, lineno, name), (primitive, total, own, cumulative, _) in stats.stats.items():
-        functions.append({
-            "file": filename, "line": lineno, "function": name,
-            "calls_per_config": total / calls,
-            "primitive_calls_per_config": primitive / calls,
-            "self_ms_per_config": 1000 * own / calls,
-            "cumulative_ms_per_config": 1000 * cumulative / calls,
-            "self_percent": 100 * own / stats.total_tt,
-        })
+        functions.append(
+            {
+                "file": filename,
+                "line": lineno,
+                "function": name,
+                "calls_per_config": total / calls,
+                "primitive_calls_per_config": primitive / calls,
+                "self_ms_per_config": 1000 * own / calls,
+                "cumulative_ms_per_config": 1000 * cumulative / calls,
+                "self_percent": 100 * own / stats.total_tt,
+            }
+        )
     return {
         "profiled_ms_per_config": 1000 * stats.total_tt / calls,
         "calls_per_config": stats.total_calls / calls,
@@ -95,12 +100,14 @@ def pipeline_components(main, rows, repeat):
                 return fn(*args, **kwargs)
             finally:
                 totals[name] += perf_counter() - start
+
         return wrapper
 
-    with patch.object(main, "_get_config", timed("experiment_config", main._get_config)), \
-            patch.object(main, "_get_base_config",
-                         timed("group_base_config", main._get_base_config)), \
-            patch.object(main, "_get_delta", timed("compare_configs", main._get_delta)):
+    with (
+        patch.object(main, "_get_config", timed("experiment_config", main._get_config)),
+        patch.object(main, "_get_base_config", timed("group_base_config", main._get_base_config)),
+        patch.object(main, "_get_delta", timed("compare_configs", main._get_delta)),
+    ):
         start = perf_counter()
         for _ in range(repeat):
             for args in rows:
@@ -108,8 +115,10 @@ def pipeline_components(main, rows, repeat):
         elapsed = perf_counter() - start
     totals["other"] = elapsed - sum(totals.values())
     return {
-        name: {"mean_ms_per_config": 1000 * value / (repeat * len(rows)),
-               "percent": 100 * value / elapsed}
+        name: {
+            "mean_ms_per_config": 1000 * value / (repeat * len(rows)),
+            "percent": 100 * value / elapsed,
+        }
         for name, value in totals.items()
     }
 
@@ -122,8 +131,9 @@ def run(args):
     with tempfile.TemporaryDirectory(prefix="dora-omegaconf-profile-") as temporary:
         root = Path(temporary)
         digests = snapshot(args.audium, root, args.grid)
-        main = make_main(root / "config", settings_from_snapshot(root, None),
-                         "parser", cache_group_bases=False)
+        main = make_main(
+            root / "config", settings_from_snapshot(root, None), "parser", cache_group_bases=False
+        )
         source = (root / "audiocraft/grids" / (args.grid.replace(".", "/") + ".py")).read_text()
         rows = collect_grid(source, main, True)
         raw = [main.parser.compose(argv) for argv in rows]
@@ -141,14 +151,20 @@ def run(args):
             "omegaconf_create": (OmegaConf.create, raw),
             "omegaconf_create_resolved_input": (OmegaConf.create, resolved),
             "omegaconf_create_no_deepcopy_flag": (
-                lambda value: OmegaConf.create(value, flags={"no_deepcopy_set_nodes": True}), raw),
+                lambda value: OmegaConf.create(value, flags={"no_deepcopy_set_nodes": True}),
+                raw,
+            ),
             "set_struct": (lambda cfg: OmegaConf.set_struct(cfg, True), configs),
             "deepcopy_dict": (deepcopy, raw),
             "deepcopy_dictconfig": (deepcopy, configs),
             "to_container_unresolved": (
-                lambda cfg: OmegaConf.to_container(cfg, resolve=False), configs),
+                lambda cfg: OmegaConf.to_container(cfg, resolve=False),
+                configs,
+            ),
             "to_container_resolved": (
-                lambda cfg: OmegaConf.to_container(cfg, resolve=True), configs),
+                lambda cfg: OmegaConf.to_container(cfg, resolve=True),
+                configs,
+            ),
             "delta_existing_configs": (compare, pairs),
             "get_xp": (main.get_xp, rows),
         }
@@ -174,44 +190,51 @@ def run(args):
                 actual = main.get_xp(argv)
                 assert actual.sig == reference.sig
                 assert_equal(actual.delta, reference.delta)
-                assert_equal(OmegaConf.to_container(actual.cfg, resolve=True),
-                             OmegaConf.to_container(reference.cfg, resolve=True))
+                assert_equal(
+                    OmegaConf.to_container(actual.cfg, resolve=True),
+                    OmegaConf.to_container(reference.cfg, resolve=True),
+                )
             caching = time_stages({"get_xp_reuse_group_base": (main.get_xp, rows)}, args.repeat)
         timings.update(caching)
         cached_ms = timings["get_xp_reuse_group_base"]["median_ms_per_config"]
-        print(f"get_xp_reuse_group_base: {cached_ms:.4f} ms/config",
-              flush=True)
+        print(f"get_xp_reuse_group_base: {cached_ms:.4f} ms/config", flush=True)
 
         profiles = {}
         for name in ("omegaconf_create", "delta_existing_configs", "get_xp"):
             fn, inputs = stages[name]
             profiles[name] = profile_stage(
-                fn, inputs, args.profile_repeat, destination / f"{name}.prof")
+                fn, inputs, args.profile_repeat, destination / f"{name}.prof"
+            )
             print(f"Profile saved: {name}", flush=True)
 
         shapes = [shape(value) for value in raw]
         report = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "python": platform.python_version(), "omegaconf": omegaconf.__version__,
-            "grid": args.grid, "configs": len(rows), "repeat": args.repeat,
+            "python": platform.python_version(),
+            "omegaconf": omegaconf.__version__,
+            "grid": args.grid,
+            "configs": len(rows),
+            "repeat": args.repeat,
             "profile_repeat": args.profile_repeat,
             "average_config_shape": {
                 key: statistics.mean(count[key] for count in shapes)
                 for key in sorted(set().union(*(count.keys() for count in shapes)))
             },
             "unique_group_bases": len(cache),
-            "timings": timings, "get_xp_components": components, "profiles": profiles,
+            "timings": timings,
+            "get_xp_components": components,
+            "profiles": profiles,
             "input_sha256": digests,
             "method": "Temporary config snapshot; recorded explorer and synthetic checkpoints; "
-                      "no training import. "
-                      "Wall timings are unprofiled medians of shuffled batches after warmup. "
-                      "cProfile self times/call counts locate hotspots; "
-                      "cumulative times overlap and "
-                      "profiling overhead means profiled milliseconds are not production timings. "
-                      "The group-base reuse control patches only the benchmark instance "
-                      "and checks all 20 outputs. "
-                      "Lookup-only stages use existing warmed DictConfigs; "
-                      "complete get_xp constructs fresh ones.",
+            "no training import. "
+            "Wall timings are unprofiled medians of shuffled batches after warmup. "
+            "cProfile self times/call counts locate hotspots; "
+            "cumulative times overlap and "
+            "profiling overhead means profiled milliseconds are not production timings. "
+            "The group-base reuse control patches only the benchmark instance "
+            "and checks all 20 outputs. "
+            "Lookup-only stages use existing warmed DictConfigs; "
+            "complete get_xp constructs fresh ones.",
         }
         (destination / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     return report

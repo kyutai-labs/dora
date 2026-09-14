@@ -15,6 +15,7 @@ contributors without a corpus are not blocked.
 The always-on tests below pin the pieces of signature computation that do not
 need a project: the hash itself, and the exclusion filtering applied before it.
 """
+
 import os
 from pathlib import Path
 
@@ -39,14 +40,19 @@ def test_excluded_keys_do_not_change_the_sig():
     dora = DoraConfig(exclude=["device", "wandb.*"])
     delta = [("optim.lr", 1e-4)]
     noisy = delta + [("device", "cuda"), ("wandb.project", "x")]
-    assert XP(dora=dora, cfg=None, argv=[], delta=delta).sig == \
-        XP(dora=dora, cfg=None, argv=[], delta=noisy).sig
+    assert (
+        XP(dora=dora, cfg=None, argv=[], delta=delta).sig
+        == XP(dora=dora, cfg=None, argv=[], delta=noisy).sig
+    )
 
 
-@pytest.mark.skipif(not os.environ.get("DORA_GOLDEN_CORPUS"),
-                    reason="set DORA_GOLDEN_CORPUS to a corpus built by dora.tests.golden")
+@pytest.mark.skipif(
+    not os.environ.get("DORA_GOLDEN_CORPUS"),
+    reason="set DORA_GOLDEN_CORPUS to a corpus built by dora.tests.golden",
+)
 def test_golden_corpus():
     from .._utils import get_main
+
     path = Path(os.environ["DORA_GOLDEN_CORPUS"])
     corpus = golden.load(path)
     assert corpus, f"empty corpus at {path}"

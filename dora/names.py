@@ -12,12 +12,10 @@ from .xp import XP
 
 
 class NamesMixin:
-    """Mixin that handles everything related to the naming of experiments.
-    """
+    """Mixin that handles everything related to the naming of experiments."""
 
     def short_name_part(self, key: str, value: tp.Any) -> str:
-        """Shorten the name of an XP.
-        """
+        """Shorten the name of an XP."""
         key_parts = key.split(".")
         short_key_parts = []
         for part in key_parts[:-1]:
@@ -38,8 +36,7 @@ class NamesMixin:
         raise NotImplementedError()
 
     def get_name(self, xp: XP) -> str:
-        """Returns the XP name.
-        """
+        """Returns the XP name."""
         if not self.get_name_parts(xp):
             # Nothing to build a name out of -- an XP loaded from disk with no
             # persisted delta, say. The signature is the one thing always true.

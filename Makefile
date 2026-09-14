@@ -1,7 +1,10 @@
 all: tests lint
 
 lint:
-	flake8 dora && mypy -p dora
+	ruff format --check dora && ruff check dora && flake8 dora && mypy -p dora
+
+format:
+	ruff format dora
 
 tests:
 	coverage run -m pytest || exit 1
@@ -25,4 +28,4 @@ live:
 	pdoc3 --http : dora
 
 
-.PHONY: docs tests lint dist clean
+.PHONY: docs tests lint format dist clean

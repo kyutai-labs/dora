@@ -19,7 +19,7 @@ from .utils import jsonable
 def _get_sig(delta: tp.List[tp.Any]) -> str:
     # Return signature from a jsonable content.
     sorted_delta = sorted(delta)
-    return sha1(json.dumps(sorted_delta).encode('utf8')).hexdigest()[:8]
+    return sha1(json.dumps(sorted_delta).encode("utf8")).hexdigest()[:8]
 
 
 @dataclass(init=False)
@@ -30,6 +30,7 @@ class XP:
 
     One XP can have multiple runs.
     """
+
     dora: DoraConfig
     cfg: tp.Any
     argv: tp.List[str]
@@ -37,9 +38,14 @@ class XP:
     delta: tp.Optional[tp.List[tp.Tuple[str, tp.Any]]]
     link: Link = field(compare=False)
 
-    def __init__(self, dora: DoraConfig, cfg: tp.Any, argv: tp.List[str],
-                 delta: tp.Optional[tp.List[tp.Tuple[str, tp.Any]]] = None,
-                 sig: tp.Optional[str] = None):
+    def __init__(
+        self,
+        dora: DoraConfig,
+        cfg: tp.Any,
+        argv: tp.List[str],
+        delta: tp.Optional[tp.List[tp.Tuple[str, tp.Any]]] = None,
+        sig: tp.Optional[str] = None,
+    ):
         self.dora = dora
         self.cfg = cfg
         self.argv = argv
@@ -60,9 +66,9 @@ class XP:
     @property
     def code_folder(self) -> Path:
         if self.dora.git_save:
-            return self.folder / 'code'
+            return self.folder / "code"
         else:
-            return Path('.')
+            return Path(".")
 
     @property
     def _xp_submitit(self) -> Path:

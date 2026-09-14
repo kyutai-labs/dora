@@ -40,8 +40,14 @@ dev = [
     "mypy",
     "pdoc3",
     "pytest",
+    "ruff",
     "types-PyYAML",
 ]
+
+[tool.ruff]
+# Matches the flake8 and yapf settings already in setup.cfg, so formatting does
+# not fight the style the repository has used until now.
+line-length = 100
 
 [tool.hatch.version]
 path = "dora/__init__.py"

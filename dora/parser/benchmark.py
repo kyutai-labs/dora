@@ -3,6 +3,7 @@
 No training imports, scheduler, experiment-directory reads, or writes to Audium.
 Checkpoint existence is simulated both ways to cover every branch of this grid.
 """
+
 import argparse
 import ast
 from datetime import datetime, timezone
@@ -74,8 +75,7 @@ def make_main(config_dir, settings, backend, *, cache_group_bases=True):
             self.parser = ConfigParser(config_dir)
             self._base_cfg = self._get_config()
             self._config_groups = [
-                str(path.relative_to(config_dir))
-                for path in config_dir.rglob("*") if path.is_dir()
+                str(path.relative_to(config_dir)) for path in config_dir.rglob("*") if path.is_dir()
             ]
             self.dora = DoraConfig(dir=settings["dir"], exclude=list(settings["exclude"]))
             self.dora.exclude += ["dora.*", "slurm.*"]
@@ -121,6 +121,7 @@ class _CheckpointPath:
 
 def collect_grid(source, main, checkpoints):
     from dora.hydra import _simplify_argv
+
     rows = []
 
     class Launcher:
@@ -148,8 +149,9 @@ def collect_grid(source, main, checkpoints):
         )
 
     tree = ast.parse(source)
-    functions = [node for node in tree.body
-                 if isinstance(node, ast.FunctionDef) and node.name == "explorer"]
+    functions = [
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "explorer"
+    ]
     if len(functions) != 1:
         raise ValueError("Expected one explorer function")
     function = functions[0]
@@ -163,13 +165,16 @@ def collect_grid(source, main, checkpoints):
 
 def settings_from_snapshot(root, xp_root):
     from omegaconf import OmegaConf
+
     settings = tomllib.loads((root / "dora.toml").read_text())["dora"]
     base = ConfigParser(root / "config").compose_config()
     if "dora" in base:
         settings.update(OmegaConf.to_container(base.dora, resolve=True))
     if xp_root is None:
+
         def expand(text):
             return re.sub(r"\$\{env:([^}]+)\}", lambda m: os.environ.get(m[1], ""), text)
+
         xp_root = expand(settings.get("dir", ""))
         if not xp_root:
             for probe in settings.get("dir_probe", []):
@@ -251,8 +256,11 @@ def audit_configs(config_dir):
                 matched.append(arg)
     if mismatches:
         raise AssertionError(json.dumps(mismatches, indent=2))
-    print(f"Audit: {count} YAML documents and {len(matched)} solver configs match; "
-          f"Hydra rejects {len(hydra_rejected)} other solver choices.", flush=True)
+    print(
+        f"Audit: {count} YAML documents and {len(matched)} solver configs match; "
+        f"Hydra rejects {len(hydra_rejected)} other solver choices.",
+        flush=True,
+    )
     return {"yaml_matched": count, "solvers_matched": matched, "hydra_rejected": hydra_rejected}
 
 
@@ -297,8 +305,11 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
             assert_equal(actual.delta, expected.delta)
             assert actual.sig == expected.sig
             signatures.append(actual.sig)
-        print(f"Parity: {len(rows)} configs, resolved configs, deltas and signatures match. "
-              f"{branch_counts}", flush=True)
+        print(
+            f"Parity: {len(rows)} configs, resolved configs, deltas and signatures match. "
+            f"{branch_counts}",
+            flush=True,
+        )
         timings = {}
         stages = {
             "hydra_compose": oracle._get_config,
@@ -315,8 +326,10 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
         cold = {}
         for backend in ("hydra", "dict", "omegaconf"):
             cold[backend] = cold_process(config_dir, rows[0], backend, cold_repeat)
-            print(f"fresh process import + compose ({backend}): "
-                  f"{cold[backend]['median_ms']:.3f} ms", flush=True)
+            print(
+                f"fresh process import + compose ({backend}): {cold[backend]['median_ms']:.3f} ms",
+                flush=True,
+            )
         return {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "source": str(audium),
@@ -338,13 +351,13 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
             "input_sha256": digests,
             "argv": rows,
             "method": "Temporary snapshot; simulated checkpoint absence/presence; "
-                      "no training imports. "
-                      "Warm timings include default cache dependency stat checks. "
-                      "Fresh instance includes YAML loading; fresh process includes imports "
-                      "but excludes interpreter startup. "
-                      "get_xp uses Dora's existing OmegaConf comparison and XP signature code. "
-                      "parser_get_xp caches read-only group bases with dependency checks; "
-                      "parser_get_xp_uncached_base rebuilds their DictConfigs.",
+            "no training imports. "
+            "Warm timings include default cache dependency stat checks. "
+            "Fresh instance includes YAML loading; fresh process includes imports "
+            "but excludes interpreter startup. "
+            "get_xp uses Dora's existing OmegaConf comparison and XP signature code. "
+            "parser_get_xp caches read-only group bases with dependency checks; "
+            "parser_get_xp_uncached_base rebuilds their DictConfigs.",
         }
 
 
@@ -354,17 +367,25 @@ def main():
     parser.add_argument("--grid", default="arflow.phonon1_fast2_langs")
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--cold-repeat", type=int, default=3)
-    parser.add_argument("--xp-root",
-                        help="Experiment path used for hypothetical continuation overrides")
+    parser.add_argument(
+        "--xp-root", help="Experiment path used for hypothetical continuation overrides"
+    )
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--audit-solvers", action="store_true",
-                        help="Also compare all YAML and solver choices")
+    parser.add_argument(
+        "--audit-solvers", action="store_true", help="Also compare all YAML and solver choices"
+    )
     args = parser.parse_args()
     if args.repeat < 1 or args.cold_repeat < 1:
         parser.error("repeat counts must be positive")
     warnings.simplefilter("ignore")
-    result = run(args.audium.expanduser().resolve(), args.grid, args.repeat, args.cold_repeat,
-                 args.xp_root, args.audit_solvers)
+    result = run(
+        args.audium.expanduser().resolve(),
+        args.grid,
+        args.repeat,
+        args.cold_repeat,
+        args.xp_root,
+        args.audit_solvers,
+    )
     if args.output:
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         print(f"Results: {args.output}")

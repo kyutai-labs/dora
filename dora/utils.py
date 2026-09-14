@@ -36,12 +36,12 @@ def jsonable(value):
     elif value is None or isinstance(value, (int, float, str, bool)):
         return value
 
-    torch = sys.modules.get('torch')
+    torch = sys.modules.get("torch")
     if torch is not None and isinstance(value, torch.Tensor):
         return value.detach().cpu().tolist()
-    basecontainer = sys.modules.get('omegaconf.basecontainer')
+    basecontainer = sys.modules.get("omegaconf.basecontainer")
     if basecontainer is not None and isinstance(value, basecontainer.BaseContainer):
-        return sys.modules['omegaconf'].OmegaConf.to_container(value)
+        return sys.modules["omegaconf"].OmegaConf.to_container(value)
     raise ValueError(f"{repr(value)} is not jsonable.")
 
 
@@ -71,7 +71,9 @@ def try_load(path: Path, load=pickle.load, mode: str = "rb"):
         # Trying to list everything that can go wrong.
         logger.warning(
             "An error happened when trying to load from %s, this file will be ignored: %r",
-            path, exc)
+            path,
+            exc,
+        )
         return None
 
 

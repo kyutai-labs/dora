@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """Tests for the command line surface itself."""
+
 import pytest
 
 from ..__main__ import get_parser
@@ -15,24 +16,27 @@ def parser():
     return get_parser()
 
 
-@pytest.mark.parametrize("argv, attr, expected", [
-    # The one that motivated this: guessing wrong on a flag whose whole purpose
-    # is to not do the thing is a bad way to find out.
-    (["grid", "g", "--dry-run"], "dry_run", True),
-    (["grid", "g", "--dry_run"], "dry_run", True),
-    (["status", "s", "--cancel", "--dry-run"], "dry_run", True),
-    (["status", "s", "--cancel", "--dry_run"], "dry_run", True),
-    # ... and every other multiword flag, in both spellings.
-    (["grid", "g", "--no-monitoring"], "monitor", False),
-    (["grid", "g", "--no_monitoring"], "monitor", False),
-    (["grid", "g", "--replace-done"], "replace_done", True),
-    (["grid", "g", "--no-git-save"], "git_save", False),
-    (["info", "--from-sig", "abc"], "from_sig", "abc"),
-    (["info", "--from_sig=abc"], "from_sig", "abc"),
-    (["info", "--from-sig=abc"], "from_sig", "abc"),
-    (["info", "--job-id", "42"], "job_id", "42"),
-    (["run", "--ddp-workers", "4"], "ddp_workers", 4),
-])
+@pytest.mark.parametrize(
+    "argv, attr, expected",
+    [
+        # The one that motivated this: guessing wrong on a flag whose whole purpose
+        # is to not do the thing is a bad way to find out.
+        (["grid", "g", "--dry-run"], "dry_run", True),
+        (["grid", "g", "--dry_run"], "dry_run", True),
+        (["status", "s", "--cancel", "--dry-run"], "dry_run", True),
+        (["status", "s", "--cancel", "--dry_run"], "dry_run", True),
+        # ... and every other multiword flag, in both spellings.
+        (["grid", "g", "--no-monitoring"], "monitor", False),
+        (["grid", "g", "--no_monitoring"], "monitor", False),
+        (["grid", "g", "--replace-done"], "replace_done", True),
+        (["grid", "g", "--no-git-save"], "git_save", False),
+        (["info", "--from-sig", "abc"], "from_sig", "abc"),
+        (["info", "--from_sig=abc"], "from_sig", "abc"),
+        (["info", "--from-sig=abc"], "from_sig", "abc"),
+        (["info", "--job-id", "42"], "job_id", "42"),
+        (["run", "--ddp-workers", "4"], "ddp_workers", 4),
+    ],
+)
 def test_both_separators_are_accepted(parser, argv, attr, expected):
     assert getattr(parser.parse_args(argv), attr) == expected
 

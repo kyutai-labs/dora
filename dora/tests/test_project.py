@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """Tests for `dora.toml` project settings."""
+
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,9 @@ def test_absent_is_not_an_error(tmp_path):
 
 def test_reads_project_and_dora_sections(tmp_path, monkeypatch):
     monkeypatch.setenv("XP_ROOT", "/tmp/xps")
-    write(tmp_path, '''
+    write(
+        tmp_path,
+        """
 [project]
 package = "proj"
 main_module = "trainer"
@@ -47,7 +50,8 @@ hydra = { version_base = "1.1" }
 dir = "${env:XP_ROOT}"
 exclude = ["device", "wandb.*"]
 git_save = true
-''')
+""",
+    )
     conf = project.load(tmp_path)
     assert conf is not None
     assert (conf.package, conf.main_module) == ("proj", "trainer")
@@ -93,7 +97,9 @@ def test_dir_probe_picks_the_first_existing_marker(tmp_path, monkeypatch):
     monkeypatch.setenv("USER", "someone")
     marker = tmp_path / "cluster_b"
     marker.mkdir()
-    write(tmp_path, f'''
+    write(
+        tmp_path,
+        f'''
 [dora]
 dir = "${{env:XP_ROOT}}"
 
@@ -104,7 +110,8 @@ dir   = "/xps/a/${{env:USER}}"
 [[dora.dir_probe]]
 probe = "{marker}"
 dir   = "/xps/b/${{env:USER}}"
-''')
+''',
+    )
     dora = project.load(tmp_path).dora_config()
     assert dora is not None and dora.dir == Path("/xps/b/someone")
 
@@ -113,27 +120,33 @@ def test_dir_wins_over_probes(tmp_path, monkeypatch):
     monkeypatch.setenv("XP_ROOT", "/xps/explicit")
     marker = tmp_path / "marker"
     marker.mkdir()
-    write(tmp_path, f'''
+    write(
+        tmp_path,
+        f'''
 [dora]
 dir = "${{env:XP_ROOT}}"
 
 [[dora.dir_probe]]
 probe = "{marker}"
 dir   = "/xps/probed"
-''')
+''',
+    )
     assert project.load(tmp_path).dora_config().dir == Path("/xps/explicit")
 
 
 def test_no_probe_matches_yields_no_config(tmp_path, monkeypatch):
     monkeypatch.delenv("XP_ROOT", raising=False)
-    write(tmp_path, f'''
+    write(
+        tmp_path,
+        f'''
 [dora]
 dir = "${{env:XP_ROOT}}"
 
 [[dora.dir_probe]]
 probe = "{tmp_path / "absent"}"
 dir   = "/xps/a"
-''')
+''',
+    )
     assert project.load(tmp_path).dora_config() is None
 
 
@@ -152,8 +165,8 @@ def test_dora_config_without_dir_still_carries_exclusions(tmp_path, monkeypatch)
     write(tmp_path, '[dora]\ndir = "${env:XP_ROOT}"\nexclude = ["device"]\n')
     conf = project.load(tmp_path)
 
-    assert conf.dora_config() is None                     # read-only path: refuse to guess
-    lenient = conf.dora_config(require_dir=False)         # training path: keep what we know
+    assert conf.dora_config() is None  # read-only path: refuse to guess
+    lenient = conf.dora_config(require_dir=False)  # training path: keep what we know
     assert lenient is not None
     assert lenient.is_excluded("device")
 

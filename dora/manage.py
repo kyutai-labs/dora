@@ -1,17 +1,37 @@
 """Explicit actions on persisted experiments, without evaluating a grid."""
+
 import json
 from pathlib import Path
 import subprocess as sp
 from typing import Any
 
 from .conf import DoraConfig, SlurmConfig, SubmitRules
-from .inspect import (JOB_RE, MAX_ROWS, cap, emit, job_states, note, output_mode,
-                      resolve_targets, JSON)
+from .inspect import (
+    JOB_RE,
+    MAX_ROWS,
+    cap,
+    emit,
+    job_states,
+    note,
+    output_mode,
+    resolve_targets,
+    JSON,
+)
 from .shep import Sheep, Shepherd
 
 _TERMINAL = {
-    "COMPLETED", "CANCELLED", "FAILED", "OUT_OF_MEMORY", "TIMEOUT", "NODE_FAIL",
-    "PREEMPTED", "BOOT_FAIL", "DEADLINE", "REVOKED", "SPECIAL_EXIT", "MISSING",
+    "COMPLETED",
+    "CANCELLED",
+    "FAILED",
+    "OUT_OF_MEMORY",
+    "TIMEOUT",
+    "NODE_FAIL",
+    "PREEMPTED",
+    "BOOT_FAIL",
+    "DEADLINE",
+    "REVOKED",
+    "SPECIAL_EXIT",
+    "MISSING",
 }
 
 
@@ -82,6 +102,7 @@ def status_action(args, dora: DoraConfig) -> int:
         if args.restart:
             # Import the entry point once. Never import or evaluate a grid.
             from ._utils import get_main
+
             main = get_main(args.main_module, args.package)
             for target, ids, slurm in plans:
                 argv = _read(target.folder / ".argv.json")
@@ -91,7 +112,8 @@ def status_action(args, dora: DoraConfig) -> int:
                 if xp.sig != target.sig or xp.folder.resolve() != target.folder.resolve():
                     raise ValueError(
                         f"{target.sig}: current project/config produces {xp.sig} at {xp.folder}; "
-                        "refusing to restart a different experiment")
+                        "refusing to restart a different experiment"
+                    )
                 sheep = Sheep(xp)
                 sheep.job = None
                 sheep._other_jobs = []
@@ -100,6 +122,7 @@ def status_action(args, dora: DoraConfig) -> int:
 
             if main.dora.git_save:
                 from . import git_save
+
                 if dry_run:
                     git_save.check_repo_clean(git_save.get_git_root(), main)
                 else:
@@ -118,8 +141,11 @@ def status_action(args, dora: DoraConfig) -> int:
                 sp.run(["scancel", *to_cancel], check=True, capture_output=True, text=True)
 
         for index, (target, ids, slurm) in enumerate(plans):
-            record: dict[str, Any] = {"sig": target.sig, "action": action,
-                                      "cancel_jobs": [job for job in ids if job in to_cancel]}
+            record: dict[str, Any] = {
+                "sig": target.sig,
+                "action": action,
+                "cancel_jobs": [job for job in ids if job in to_cancel],
+            }
             if args.restart:
                 assert slurm is not None
                 sheep = sheeps[index]
@@ -131,16 +157,31 @@ def status_action(args, dora: DoraConfig) -> int:
     except (OSError, ValueError, RuntimeError, TypeError, sp.SubprocessError) as exc:
         note(f"error: {exc}")
         if output_mode(args) == JSON:
-            emit([], as_json={"action": action, "dry_run": dry_run,
-                              "experiments": records, "error": str(exc)})
+            emit(
+                [],
+                as_json={
+                    "action": action,
+                    "dry_run": dry_run,
+                    "experiments": records,
+                    "error": str(exc),
+                },
+            )
         return 1
 
     mode = output_mode(args)
     limit = args.limit or cap(MAX_ROWS, mode)
     shown = records[:limit]
     if mode == JSON:
-        emit([], as_json={"action": action, "dry_run": dry_run, "count": len(records),
-                          "shown": len(shown), "experiments": shown})
+        emit(
+            [],
+            as_json={
+                "action": action,
+                "dry_run": dry_run,
+                "count": len(records),
+                "shown": len(shown),
+                "experiments": shown,
+            },
+        )
     else:
         prefix = "Would " if dry_run else ""
         lines = [f"{prefix}{action}: {len(records)} experiment(s)"]

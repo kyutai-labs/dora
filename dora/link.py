@@ -22,6 +22,7 @@ def _retry(attempts: int):
     decorator-time third-party import left in Dora, and paying for it on every
     `import dora` to protect one file read is a poor trade.
     """
+
     def _decorator(func):
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
@@ -31,9 +32,12 @@ def _retry(attempts: int):
                 except Exception:
                     if attempt == attempts:
                         raise
-                    logger.debug("%s failed (attempt %d/%d), retrying.",
-                                 func.__name__, attempt, attempts)
+                    logger.debug(
+                        "%s failed (attempt %d/%d), retrying.", func.__name__, attempt, attempts
+                    )
+
         return _wrapped
+
     return _decorator
 
 
@@ -45,6 +49,7 @@ class Link:
     This can also be used to simulate a fake link by passing `None`
     as the history file.
     """
+
     def __init__(self, history_file: tp.Optional[Path] = None):
         """
         Initialize the Link with Dora.
@@ -58,7 +63,7 @@ class Link:
         if self.history_file is None:
             return
         if self.history_file.exists():
-            history = utils.try_load(self.history_file, load=json.load, mode='r')
+            history = utils.try_load(self.history_file, load=json.load, mode="r")
             if history is not None:
                 self.history = history
 
@@ -67,6 +72,7 @@ class Link:
             return
 
         from . import distrib
+
         if not distrib.is_master():
             return
         with utils.write_and_rename(self.history_file, "w") as tmp:
