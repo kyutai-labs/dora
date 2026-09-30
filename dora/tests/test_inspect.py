@@ -341,3 +341,51 @@ def test_one_column_per_metric_family():
     assert "ce" in chosen
     assert not any(k.startswith("ce_q") for k in chosen)
     assert "ppl" in chosen and "audio_ce" in chosen
+
+
+def test_wrapped_name_columns_preserve_content_and_alignment(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    name = "path=" + "abcdefghij" * 6
+    wrapped = inspect.format_name(name, inspect.PRETTY, width=12)
+    assert "".join(wrapped.splitlines()) == name
+    assert max(map(len, wrapped.splitlines())) <= 12
+    rows = inspect.columns(
+        [["aaaaaaaa", wrapped, "RUNNING"]], ["sig", "name", "state"], inspect.PRETTY
+    )
+    start = rows[0].index("name")
+    state = rows[0].index("state")
+    assert "".join(row[start:state].strip() for row in rows[1:]) == name
+    assert rows[1].index("RUNNING") == state
+    assert all(not row[:start].strip() for row in rows[2:])
+    compact = inspect.format_name(name, inspect.COMPACT, width=12)
+    assert "\n" not in compact and len(compact) <= inspect.MAX_NAME_CHARS
+    assert "..." in compact
+
+
+def test_status_wraps_individual_names_and_omits_common_part(dora, monkeypatch, capsys):
+    monkeypatch.setenv("NO_COLOR", "1")
+    dora.name_width = 12
+    make_xp(dora, "aaaaaaaa", job_id="42")
+    name = "seed=" + "0123456789" * 6
+    base = "model=" + "abcdefghij" * 18
+    monkeypatch.setattr(inspect, "_xp_names", lambda *a: ({"aaaaaaaa": name}, base))
+    monkeypatch.setattr(inspect, "job_states", lambda *a: {"42": "RUNNING"})
+    args = _Args(targets=["aaaaaaaa"], keys=None, limit=None, pretty=True)
+    assert inspect.status_action(args, dora) == 0
+    output = capsys.readouterr().out
+    assert "base:" not in output and "model=" not in output
+    header = next(line for line in output.splitlines() if "sig" in line and "state" in line)
+    start, stop = header.index("name"), header.index("state")
+    rows = output.split(header + "\n", 1)[1].splitlines()[:-1]
+    assert "".join(row[start:stop].strip() for row in rows) == name
+    args.pretty = False
+    args.compact = True
+    assert inspect.status_action(args, dora) == 0
+    compact = capsys.readouterr().out
+    assert "base:" not in compact and "model=" not in compact
+
+
+def test_pretty_output_does_not_cut_wrapped_names_at_character_cap(capsys):
+    name = "a" * (inspect.cap(inspect.MAX_TOTAL_CHARS, inspect.PRETTY) + 1)
+    inspect.emit([inspect.format_name(name, inspect.PRETTY)], mode=inspect.PRETTY)
+    assert "".join(capsys.readouterr().out.splitlines()) == name

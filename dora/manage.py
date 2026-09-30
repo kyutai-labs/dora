@@ -95,6 +95,8 @@ def status_action(args, dora: DoraConfig) -> int:
                 raise ValueError(f"{target.sig}: experiment does not exist inside {root}")
             ids = _job_ids(target.folder, dora)
             slurm = load_slurm_config(target.folder, dora) if args.restart else None
+            if slurm is not None and getattr(args, "partition", None) is not None:
+                slurm.partition = args.partition
             plans.append((target, ids, slurm))
 
         shepherd = None
@@ -148,6 +150,7 @@ def status_action(args, dora: DoraConfig) -> int:
             }
             if args.restart:
                 assert slurm is not None
+                record["partition"] = slurm.partition
                 sheep = sheeps[index]
                 if shepherd is not None:
                     shepherd.maybe_submit_lazy(sheep, slurm, SubmitRules())
@@ -187,6 +190,8 @@ def status_action(args, dora: DoraConfig) -> int:
         lines = [f"{prefix}{action}: {len(records)} experiment(s)"]
         for record in shown:
             suffix = f" -> job {record['job']}" if record.get("job") else ""
+            if "partition" in record:
+                suffix += f"  partition={record['partition']}"
             lines.append(f"{record['sig']}  {action}{suffix}")
         if len(shown) < len(records):
             lines.append(f"... {len(records) - len(shown)} more (all selected XPs were processed)")

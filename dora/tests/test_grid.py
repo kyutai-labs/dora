@@ -302,3 +302,33 @@ def test_dry_run_records_no_metric_spec(tmpdir):
         grid_folder = main.dora.dir / main.dora._grids / "unittest_spec_dry"
         assert not (grid_folder / METRIC_SPEC_NAME).exists()
         assert not grid_folder.exists()
+
+
+def test_pretty_grid_respects_explorer_wrapping(tmpdir, monkeypatch, capsys):
+    import treetable as tt
+    from ..grid import monitor
+    from ..inspect import ANSI_RE
+    from ..shep import Shepherd
+
+    with mock_shep():
+        main = get_main(tmpdir)
+        main.dora.name_width = 12
+        name = "abcdefghijklmnopqrstuvxyz" * 3
+        base = "0123456789" * 20
+        monkeypatch.setattr(main, "get_names", lambda _: ([name], base))
+        explorer = Explorer(explore_1)
+        node = tt.leaf("name", display="Experiment", align=">", wrap=20)
+        monkeypatch.setattr(explorer, "get_grid_meta", lambda: [tt.leaf("sig"), node])
+        sheep = Shepherd(main, read_only=True).get_sheep_from_argv([])
+        assert monitor(RunGridArgs(pretty=True), main, explorer, [sheep], print)
+        output = ANSI_RE.sub("", capsys.readouterr().out)
+        assert "Base name:  " + base in output
+        assert "Experiment" in output
+        # Parse rendered cells rather than asserting how the renderer was called.
+        lines = output.splitlines()
+        header = next(i for i, line in enumerate(lines) if "Experiment" in line)
+        start = lines[header].index("Experiment") - 10  # Explorer chose 20, not name_width=12
+        rendered = "".join(line[start : start + 20].strip() for line in lines[header + 1 :])
+        assert rendered == name
+        assert name[:20] in lines[header + 1]
+        assert node.wrap == 20  # don't mutate an Explorer's reusable table specification

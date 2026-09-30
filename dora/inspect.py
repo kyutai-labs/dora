@@ -24,12 +24,14 @@ experiment directory -- see `dora.project`.
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from itertools import zip_longest
 import json
 import os
 from pathlib import Path
 import re
 import subprocess as sp
 import sys
+import textwrap
 import typing as tp
 
 from .conf import DoraConfig
@@ -138,7 +140,7 @@ def emit(lines: tp.Sequence[str], as_json: tp.Any = None, mode: str = COMPACT) -
         return
     text = "\n".join(lines)
     limit = cap(MAX_TOTAL_CHARS, mode)
-    if len(text) > limit:
+    if mode != PRETTY and len(text) > limit:
         text = text[:limit] + "\n... output truncated, narrow with --keys/--limit/--pattern"
     print(text)
 
@@ -189,20 +191,37 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _visible_len(text))
 
 
+def get_name_width(dora: tp.Optional[DoraConfig] = None) -> int:
+    """The invoking repo's display preference, also usable outside a project."""
+    from . import project
+
+    conf = project.load()
+    local = conf.dora_config(require_dir=False) if conf is not None else None
+    return (local or dora or DoraConfig()).name_width
+
+
+def format_name(name: str, mode: str, width: int = 100, compact_width: int = MAX_NAME_CHARS) -> str:
+    if mode != PRETTY:
+        return elide_parts(name, compact_width)
+    return textwrap.fill(name, width=width, break_on_hyphens=False)
+
+
 def columns(
     rows: tp.List[tp.List[str]], headers: tp.List[str], mode: str = COMPACT
 ) -> tp.List[str]:
-    """Fixed-width columns, no box drawing. Colour only in pretty mode."""
+    """Aligned columns, with multiline cells in human-readable output."""
     if not rows:
         return []
+    cells = [[cell.split("\n") if mode == PRETTY else [cell] for cell in row] for row in rows]
     widths = [len(h) for h in headers]
-    for row in rows:
+    for row in cells:
         for i, cell in enumerate(row):
-            widths[i] = max(widths[i], _visible_len(cell))
+            widths[i] = max(widths[i], *(_visible_len(line) for line in cell))
     header = "  ".join(_pad(h, widths[i]) for i, h in enumerate(headers)).rstrip()
     out = [paint(header, "1", mode)]
-    for row in rows:
-        out.append("  ".join(_pad(cell, widths[i]) for i, cell in enumerate(row)).rstrip())
+    for row in cells:
+        for line in zip_longest(*row, fillvalue=""):
+            out.append("  ".join(_pad(cell, widths[i]) for i, cell in enumerate(line)).rstrip())
     return out
 
 
@@ -584,7 +603,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
         job = read_json(target.folder / "job.json")
         jobs[target.sig] = (job or {}).get("job_id", "")
     states = job_states(list(jobs.values()))
-    names, base_name = _xp_names(dora, shown)
+    names, _ = _xp_names(dora, shown)
 
     # Prefer the columns `dora grid` recorded for this grid: they are what its
     # Explorer displays, so the two commands agree, and they are stage-qualified
@@ -632,6 +651,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
     if not metric_keys:
         metric_keys = choose_metric_keys([r["metrics"] for r in records], cap(4, mode))
     metric_keys = metric_keys[: cap(MAX_METRIC_COLS, mode)]
+    name_width = get_name_width(dora) if mode == PRETTY else 100
     headers = ["#", "sig", "name", "state", "job", "ep", "ping"] + metric_keys
     rows = []
     for record in records:
@@ -639,7 +659,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
             [
                 str(record["index"]),
                 record["sig"],
-                elide_parts(record["name"], cap(MAX_NAME_CHARS, mode)),
+                format_name(record["name"], mode, name_width),
                 paint_state(record["state"], mode),
                 record["job"] or "-",
                 str(record["epoch"]),
@@ -652,8 +672,6 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
     grids = {t.grid for t in shown if t.grid}
     if len(grids) == 1:
         lines.append(f"grid {grids.pop()} ({len(targets)} xps)")
-    if base_name:
-        lines.append("base: " + elide_parts(base_name, 160))
     lines += columns(rows, headers, mode)
     if len(targets) > len(shown):
         lines.append(f"... {len(targets) - len(shown)} more (--limit)")

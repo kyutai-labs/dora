@@ -383,8 +383,62 @@ piping into a file or a script does the useful thing without being told, and a
 person at a terminal gets something readable. `NO_COLOR` is honoured. For
 `dora grid`, pretty is the treetable it has always printed.
 
+Human-readable `status` and `running` output wraps experiment names at 100
+characters. Both omit the common name part. This is the width of the name column,
+not the entire table. Change it in the invoking repository's `dora.toml` (also works for `running` with no experiment directory configured):
+
+```toml
+[dora]
+name_width = 80
+```
+
+The width must be a positive integer. `grid` uses its Explorer's table wrapping
+settings, such as `tt.leaf("name", wrap=80)`, independently of `name_width`.
+Compact/non-TTY output keeps shortened, unwrapped names; `--json` keeps its full structured values without display
+wrapping. Human-readable output still limits the number of jobs shown, but does
+not cut the text of a displayed name to meet a total character budget.
+
 `dora log` follows the same rule for the log's *own* colour: kept when pretty,
 stripped otherwise, and never present in JSON.
+
+### Running jobs and GPU usage
+
+```bash
+dora running                         # your running jobs across repos, grouped by grid
+dora running --compact               # plain, unwrapped tables (default without a TTY)
+dora running --json                  # one complete JSON object
+dora running --pretty --limit 100    # human-readable tables, even through a pipe
+```
+
+The overview works from any directory, with no project or training import. It
+queries your running Slurm jobs once, discovers experiment roots from log paths
+and static project settings at job working directories, and reads saved metadata.
+Array tasks and running dependent attempts are included. It reports allocated GPUs
+per job, per grid, and overall, plus job IDs, signatures, partitions, and short
+automatic names with common name parts omitted. Pending and completed
+jobs are excluded. GPU counts come from live allocations, including multi-node
+jobs; missing allocation information is shown as unknown, with `unknown_gpus`
+counts alongside the known GPU subtotal.
+
+Grid membership comes from saved links, without evaluating grid files. An XP
+in several grids appears in each, but overall totals count each job once.
+Membership does not identify which grid originally submitted a shared XP.
+Experiments with no grid appear under `(no grid)` (`null` in JSON). Identical grid
+names in different experiment roots remain separate; `root` identifies the
+experiment directory. Jobs with unavailable or unrecognised Dora metadata appear
+under `(unidentified)`, retaining their scheduler names and GPU counts. They have
+null `root`, `grid`, and `sig` values in JSON. Discovery uses the standard Dora
+folder layout, or a resolvable `dora.toml` at the job's working directory; grid
+modules and the branch that launched them do not need to be present.
+
+Compact output uses uncoloured, aligned tables grouped by grid, with one line
+per job and no name wrapping. Job names contain the parts that vary within the grid;
+common name parts are omitted in every mode. Compact names are shortened with
+an explicit omitted-parts marker; `--json` preserves full job names and nests
+job records under `grids`. GPU totals always cover all matching jobs. In JSON,
+`count` includes all matching jobs; `shown` counts displayed jobs. Rendered modes show up to 40 jobs (200 in pretty mode), overridable with
+`--limit`; JSON has no default job limit. Scheduler failures return a nonzero
+exit status instead of reporting an empty queue.
 
 ### Which metrics `dora status` shows
 
@@ -925,6 +979,7 @@ a failed submission leaves the previous snapshot in place.
 dora status <sig> --cancel
 dora status <sig> --restart --dry-run
 dora status <sig> --restart
+dora status <sig> --restart --partition new_partition
 ```
 
 These actions also accept multiple signatures, job IDs, or a grid name.
@@ -936,6 +991,11 @@ dependent jobs and leaves other members of an array alone. Restart uses saved
 `.argv.json` and `slurm.json`, cancels an existing active attempt, and submits
 the selected experiment again, preserving its folder and checkpoints. Older
 experiments can fall back to `job.json`'s `slurm_config` field.
+
+Pass `-p` / `--partition` with `--restart` to override only the saved partition.
+The selected partition appears in the output, including `--dry-run`; a dry run
+leaves the saved settings untouched. A successful restart persists the new
+partition for future restarts.
 
 Restart imports the current training entry point and composes only the selected
 experiments, using the current code/configs and normal `git_save` behavior.

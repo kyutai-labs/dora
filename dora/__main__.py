@@ -18,6 +18,7 @@ from . import inspect as _inspect
 from .launch import launch_action
 from .log import fatal, setup_logging, simple_log
 from .run import run_action
+from .running import running_action
 from .share import import_action, export_action
 from ._utils import get_dora_config, get_main
 
@@ -260,7 +261,17 @@ def get_parser():
         help="Validate and preview --cancel or --restart without changing jobs. "
         "--limit only limits output, not the selected experiments.",
     )
+    status.add_argument(
+        "-p", "--partition", help="Override the saved partition when using --restart."
+    )
     status.set_defaults(action=_inspect.status_action)
+
+    running = subparsers.add_parser(
+        "running", help="Your running jobs across repositories, grouped by grid, with GPU totals."
+    )
+    add_output_flags(running)
+    running.add_argument("--limit", type=int, default=None, help="Maximum jobs to display.")
+    running.set_defaults(action=running_action, read_only=True)
 
     metrics = add_inspect(
         "metrics", "Downsampled metric history for one experiment.", "A signature."
@@ -376,10 +387,17 @@ def main():
     ):
         parser.error("status --dry_run requires --cancel or --restart")
 
+    if args.command == "status" and args.partition is not None and not args.restart:
+        parser.error("status --partition requires --restart")
+
     setup_logging(args.verbose)
 
     if args.action is None:
         fatal("You must give an action.")
+
+    if args.command == "running":
+        # Discover metadata from live jobs, even outside a Dora project.
+        return args.action(args)
 
     if getattr(args, "read_only", False):
         # These only need to know where experiments live. Importing the training

@@ -236,3 +236,39 @@ def test_cancellation_failure_does_not_submit(launched, monkeypatch):
     )
     assert inspect.status_action(args(sheep.xp.sig, restart=True), main.dora) == 1
     assert len(FakeJob.watcher.jobs) == 1
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_restart_partition_override(launched, capsys, dry_run):
+    main, shepherd, calls = launched
+    sheep, slurm = launch(main, shepherd, gpus=16, partition="old", dependents=1)
+    snapshot = (sheep.xp.folder / "slurm.json").read_bytes()
+    assert (
+        inspect.status_action(
+            args(sheep.xp.sig, restart=True, partition="new", dry_run=dry_run), main.dora
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["experiments"][0]["partition"] == "new"
+    if dry_run:
+        assert not calls
+        assert (sheep.xp.folder / "slurm.json").read_bytes() == snapshot
+    else:
+        slurm.partition = "new"
+        assert manage.load_slurm_config(sheep.xp.folder, main.dora) == slurm
+
+
+@pytest.mark.parametrize("flag", ["-p", "--partition"])
+def test_restart_partition_parser(flag):
+    parsed = get_parser().parse_args(["status", "12345678", "--restart", flag, "new"])
+    assert parsed.partition == "new"
+
+
+@pytest.mark.parametrize("action", [[], ["--cancel"]])
+def test_partition_requires_restart(monkeypatch, action):
+    from dora.__main__ import main
+
+    monkeypatch.setattr("sys.argv", ["dora", "status", "12345678", "-p", "new", *action])
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 2

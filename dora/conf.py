@@ -177,6 +177,9 @@ class DoraConfig:
     shared: tp.Optional[Path] = None  # Optional path for shared XPs.
     grid_package: tp.Optional[str] = None
 
+    # Maximum name-column width in human-readable CLI output.
+    name_width: int = 100
+
     # Those are internal config values and are unlikely to be changed
     history: str = "history.json"  # where metrics will be stored
     xps: str = "xps"  # subfolder to store xps
@@ -197,6 +200,8 @@ class DoraConfig:
         return False
 
     def __setattr__(self, name, value):
+        if name == "name_width" and (type(value) is not int or value < 1):
+            raise ValueError("name_width must be a positive integer")
         if name in ["dir", "shared"]:
             from .git_save import to_absolute_path
 

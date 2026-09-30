@@ -188,3 +188,22 @@ def test_fast_parser_flag_requires_boolean(tmp_path, value):
     write(tmp_path, f"[project]\nuse_fast_parser = {value}\n")
     with pytest.raises(project.ProjectConfigError, match="use_fast_parser must be a boolean"):
         project.load(tmp_path)
+
+
+def test_name_width_without_experiment_directory(tmp_path, monkeypatch):
+    from dora.conf import DoraConfig
+    from dora.inspect import get_name_width
+
+    monkeypatch.chdir(tmp_path)
+    assert get_name_width() == 100
+    assert get_name_width(DoraConfig(name_width=64)) == 64
+    write(tmp_path, "[dora]\nname_width = 32\n")
+    assert get_name_width(DoraConfig(name_width=64)) == 32
+    assert project.load(tmp_path).dora_config(require_dir=False).name_width == 32
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "true", '"80"', "2.5"])
+def test_invalid_name_width(tmp_path, value):
+    write(tmp_path, f"[dora]\nname_width = {value}\n")
+    with pytest.raises(ValueError, match="name_width must be a positive integer"):
+        project.load(tmp_path).dora_config(require_dir=False)
