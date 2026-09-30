@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.0a2] - 2026-09-30
+
+- Added `dora running`: lists your running Slurm jobs from any directory, grouped
+  by experiment root and saved grid membership, with GPU counts per job, per grid,
+  and overall. It discovers metadata from job paths without importing project or
+  grid code, so it works across repositories and branches. Shared jobs count once
+  in the overall totals; jobs with unavailable metadata remain visible.
+- `dora status --restart` accepts `-p` / `--partition` to override the saved
+  partition while preserving the other Slurm settings and checkpoints. The
+  selected partition appears in dry-run output and is saved after a successful
+  restart.
+- Human-readable `status` and `running` output preserves full per-job names,
+  wrapping them at 100 characters by default. Configure `[dora] name_width` in
+  `dora.toml` to change the name-column width. Both commands omit common name
+  parts; `grid` continues to use its Explorer's wrapping settings.
+- `running` follows the usual output modes: readable tables on a terminal,
+  uncoloured tables with shortened, unwrapped names for non-TTY or `--compact`
+  output, and a structured object only with `--json`.
+
 ## [0.2.0a1] - TBD
 
 Faster, quieter, and readable without importing your project.
