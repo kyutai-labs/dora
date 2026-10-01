@@ -10,14 +10,14 @@ authors = [
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.10.0"
+requires-python = ">=3.11.0"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "omegaconf",
-    "retrying",
+    "pyyaml",
     "submitit",
     "treetable",
     "torch",
@@ -40,18 +40,30 @@ dev = [
     "mypy",
     "pdoc3",
     "pytest",
+    "ruff",
+    "types-PyYAML",
 ]
+
+[tool.ruff]
+# Matches the flake8 and yapf settings already in setup.cfg, so formatting does
+# not fight the style the repository has used until now.
+line-length = 100
 
 [tool.hatch.version]
 path = "dora/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dora"]
+exclude = [
+    "dora/parser/*.json",
+    "dora/parser/omegaconf_profile",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "dora",
     "examples",
+    "templates",
     "CHANGELOG.md",
     "LICENSE",
     "Makefile",
@@ -60,6 +72,8 @@ include = [
     "setup.cfg",
 ]
 exclude = [
+    "dora/parser/*.json",
+    "dora/parser/omegaconf_profile",
     "examples/outputs",
     "examples/outputs_complex",
     "examples/outputs_pl",

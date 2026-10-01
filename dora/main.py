@@ -14,17 +14,16 @@ Slurm configuration, storage location, naming conventions etc.
 """
 
 import argparse
-from collections import OrderedDict
 import importlib
 import json
-from pathlib import Path
-import typing as tp
 import sys
+import typing as tp
+from collections import OrderedDict
+from pathlib import Path
 
 from .conf import DoraConfig, SlurmConfig
 from .names import NamesMixin
-from .xp import XP, _context
-
+from .xp import XP, _context, load_xp
 
 MainFun = tp.Callable
 
@@ -55,6 +54,7 @@ class DecoratedMain(NamesMixin):
             by the user.
         dora (DoraConfig): configuration for Dora.
     """
+
     _slow = False
 
     def __init__(self, main: MainFun, dora: DoraConfig):
@@ -64,13 +64,13 @@ class DecoratedMain(NamesMixin):
         if module_name is None:
             # we are being called in a weird way and definitely not from
             # a Dora command.
-            self.package = 'unknown'
-            self.main_module = 'train'
+            self.package = "unknown"
+            self.main_module = "train"
         else:
-            if '.' in module_name:
+            if "." in module_name:
                 self.package, self.main_module = module_name.rsplit(".", 1)
             else:
-                self.package = 'unknown'
+                self.package = "unknown"
                 self.main_module = module_name
 
         self.name = self.package
@@ -85,7 +85,7 @@ class DecoratedMain(NamesMixin):
         with _context.enter_xp(xp):
             return self._main()
 
-    def _is_active(self, argv: tp.List[str]) -> bool:
+    def _is_active(self, argv: list[str]) -> bool:
         return True
 
     def _main(self):
@@ -95,11 +95,10 @@ class DecoratedMain(NamesMixin):
         return _load_main, (self._full_name,)
 
     def get_xp(self, argv: tp.Sequence[str]) -> XP:
-        """Return an XP given a list of arguments.
-        """
+        """Return an XP given a list of arguments."""
         raise NotImplementedError()
 
-    def _get_argv(self) -> tp.List[str]:
+    def _get_argv(self) -> list[str]:
         # Returns the actual list of arguments, typically from sys.argv.
         # This is only called when the XP is executed, not when it is obtained
         # by other means, e.g. from a grid search file, or info command.
@@ -115,7 +114,14 @@ class DecoratedMain(NamesMixin):
         can be easily shared using its signature.
         """
         xp.folder.mkdir(exist_ok=True, parents=True)
-        json.dump(xp.argv, open(xp._argv_cache, 'w'))
+        with open(xp._argv_cache, "w") as file:
+            json.dump(xp.argv, file)
+        if xp.delta is not None:
+            # Persisted here because this is the only moment it is known for
+            # certain. Recomputing it later needs the config tree exactly as it
+            # was, and config trees move on. See `XP._delta_cache`.
+            with open(xp._delta_cache, "w") as file:
+                json.dump(xp.delta, file)
         if xp._shared_argv_cache is not None:
             # Create xps and XP folders with 0777 mode.
             xp._shared_argv_cache.parent.parent.mkdir(exist_ok=True, parents=True, mode=0o777)
@@ -125,7 +131,8 @@ class DecoratedMain(NamesMixin):
                 xp._shared_argv_cache.parent.chmod(0o777)
             except PermissionError:
                 pass
-            json.dump(xp.argv, open(xp._shared_argv_cache, 'w'))
+            with open(xp._shared_argv_cache, "w") as file:
+                json.dump(xp.argv, file)
             try:
                 xp._shared_argv_cache.chmod(0o777)
             except PermissionError:
@@ -147,13 +154,47 @@ class DecoratedMain(NamesMixin):
     def get_xp_from_sig(self, sig: str) -> XP:
         """Returns the XP from the signature. Can only work if such an XP
         has previously ran.
+
+        This recomposes the config from the project's *current* config files. It
+        is accurate only as long as those have not changed; see
+        `get_existing_xp_from_sig` for a reader that trusts what the experiment
+        stored instead.
         """
         return self.get_xp(self.get_argv_from_sig(sig))
+
+    def get_existing_xp_from_sig(self, sig: str) -> XP:
+        """Load an experiment that has already run, from what it wrote to disk.
+
+        `get_xp_from_sig` replays a signature's argv through the config system,
+        which is both slow and a lie: it describes what those arguments would
+        mean *today*. Experiments outlive their config files. A solver gets
+        renamed, a group is deleted, an override stops being valid -- and the
+        experiment becomes unreadable even though its results are sitting right
+        there. On a real 1031-experiment directory, a third could no longer be
+        loaded at all, and fifteen more resolved to a different signature than
+        the folder they live in.
+
+        This reads the argv cache, the persisted delta, and (for config-file
+        based mains) the config the run actually used. The signature is taken as
+        given rather than recomputed, since the folder name is the ground truth.
+
+        Missing pieces are left as None rather than guessed at: `delta` is None
+        for experiments created before it was persisted, which costs their name
+        but nothing else.
+        """
+        xp = load_xp(self.dora, sig)
+        xp.cfg = self._load_existing_cfg(xp)
+        return xp
+
+    def _load_existing_cfg(self, xp: XP) -> tp.Any:
+        """Load the config an experiment actually ran with, or None if the main
+        does not store one."""
+        return None
 
     def __repr__(self):
         return f"DecoratedMain({self.main})"
 
-    def value_to_argv(self, arg: tp.Any) -> tp.List[str]:
+    def value_to_argv(self, arg: tp.Any) -> list[str]:
         """Convert a Python value to argv. arg can be either:
         - a list, then each entry will be converted and all argv are concatenated.
         - a str, then it is directly an argv entry.
@@ -161,7 +202,7 @@ class DecoratedMain(NamesMixin):
         """
         raise NotImplementedError()
 
-    def get_xp_history(self, xp: XP) -> tp.List[dict]:
+    def get_xp_history(self, xp: XP) -> list[dict]:
         """Return the metrics for a given XP. By default this will look into
         the `history.json` file, that can be populated with the Link class.
 
@@ -172,8 +213,7 @@ class DecoratedMain(NamesMixin):
         return xp.link.history
 
     def get_slurm_config(self) -> SlurmConfig:
-        """Return default Slurm config for the launch and grid actions.
-        """
+        """Return default Slurm config for the launch and grid actions."""
         return SlurmConfig()
 
 
@@ -189,8 +229,15 @@ class ArgparseMain(DecoratedMain):
             will translate to the command-line `--batch-size=32`,
             otherwise, it will stay as `--batch_size=32`.
     """
-    def __init__(self, main: MainFun, dora: DoraConfig, parser: argparse.ArgumentParser,
-                 slurm: tp.Optional[SlurmConfig] = None, use_underscore: bool = True):
+
+    def __init__(
+        self,
+        main: MainFun,
+        dora: DoraConfig,
+        parser: argparse.ArgumentParser,
+        slurm: SlurmConfig | None = None,
+        use_underscore: bool = True,
+    ):
         super().__init__(main, dora)
         self.parser = parser
         self.use_underscore = use_underscore
@@ -206,7 +253,7 @@ class ArgparseMain(DecoratedMain):
         xp = XP(dora=self.dora, cfg=args, argv=argv, delta=delta)
         return xp
 
-    def value_to_argv(self, arg: tp.Any) -> tp.List[str]:
+    def value_to_argv(self, arg: tp.Any) -> list[str]:
         argv = []
         if isinstance(arg, str):
             argv.append(arg)
@@ -222,31 +269,39 @@ class ArgparseMain(DecoratedMain):
             for part in arg:
                 argv += self.value_to_argv(part)
         else:
-            raise ValueError(f"Can only process dict, tuple, lists and str, but got {arg}")
+            # Preserve the existing ValueError validation API.
+            raise ValueError(  # noqa: TRY004
+                f"Can only process dict, tuple, lists and str, but got {arg}"
+            )
         return argv
 
     def get_name_parts(self, xp: XP) -> OrderedDict:
-        parts = OrderedDict()
-        assert xp.delta is not None
+        parts: OrderedDict = OrderedDict()
+        if xp.delta is None:
+            # Loaded from disk without a persisted delta; `get_names` falls back
+            # to the signature for these.
+            return parts
         for name, value in xp.delta:
             parts[name] = value
         return parts
 
     def get_slurm_config(self) -> SlurmConfig:
-        """Return default Slurm config for the launch and grid actions.
-        """
+        """Return default Slurm config for the launch and grid actions."""
         if self.slurm is not None:
             return self.slurm
         return super().get_slurm_config()
 
 
-def argparse_main(parser: argparse.ArgumentParser, *,
-                  dir: tp.Union[str, Path] = "./outputs",
-                  exclude: tp.Sequence[str] = [],
-                  slurm: tp.Optional[SlurmConfig] = None,
-                  shared: tp.Optional[tp.Union[str, Path]] = None,
-                  use_underscore: bool = True,
-                  **kwargs):
+def argparse_main(
+    parser: argparse.ArgumentParser,
+    *,
+    dir: str | Path = "./outputs",
+    exclude: tp.Sequence[str] = [],
+    slurm: SlurmConfig | None = None,
+    shared: str | Path | None = None,
+    use_underscore: bool = True,
+    **kwargs,
+):
     """Nicer version of `ArgparseMain` that acts like a decorator, and directly
     exposes the most useful configs to override.
 
@@ -262,11 +317,14 @@ def argparse_main(parser: argparse.ArgumentParser, *,
             otherwise, it will stay as `--batch_size=32`.
         **kwargs: extra args are passed to `DoraConfig`.
     """
+
     def _decorator(main: MainFun):
         dora = DoraConfig(
             dir=Path(dir),
             shared=None if shared is None else Path(shared),
             exclude=list(exclude),
-            **kwargs)
+            **kwargs,
+        )
         return ArgparseMain(main, dora, parser, use_underscore=use_underscore, slurm=slurm)
+
     return _decorator

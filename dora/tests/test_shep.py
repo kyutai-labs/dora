@@ -71,7 +71,7 @@ def test_shep(tmpdir):
         sheep = shepherd.get_sheep_from_argv(["--a=56"])
         shepherd.maybe_submit_lazy(sheep, slurm, rules)
         shepherd.commit()
-        assert sheep.xp.code_folder.name == 'code'
+        assert sheep.xp.code_folder.name == "code"
         assert sheep.xp.code_folder.exists()
 
 
@@ -89,3 +89,36 @@ def test_dependent(tmpdir):
         assert len(sheep._dependent_jobs) == 2
         assert sheep._dependent_jobs[0].job_id == "1"
         assert sheep._dependent_jobs[1].job_id == "2"
+
+
+def test_relink_retargets_an_existing_link(tmp_path):
+    """Slurm job ids are reused after the accounting database is reset, so a
+    `by_id` entry may already exist pointing at an unrelated experiment.
+    Failing would crash submission; keeping the old target would make
+    `dora info -j` answer with the wrong experiment."""
+    from ..shep import relink
+
+    old = tmp_path / "old_xp"
+    new = tmp_path / "new_xp"
+    old.mkdir()
+    new.mkdir()
+    link = tmp_path / "by_id" / "1234"
+    link.parent.mkdir()
+
+    relink(link, old)
+    assert link.resolve() == old
+    relink(link, new)
+    assert link.resolve() == new
+
+
+def test_relink_replaces_a_broken_link(tmp_path):
+    from ..shep import relink
+
+    target = tmp_path / "xp"
+    target.mkdir()
+    link = tmp_path / "1234"
+    link.symlink_to(tmp_path / "deleted")
+    assert not link.exists() and link.is_symlink()
+
+    relink(link, target)
+    assert link.resolve() == target

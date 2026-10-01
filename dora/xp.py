@@ -4,22 +4,22 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import json
+import typing as tp
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha1
-import json
 from pathlib import Path
-import typing as tp
 
 from .conf import DoraConfig
 from .link import Link
 from .utils import jsonable
 
 
-def _get_sig(delta: tp.List[tp.Any]) -> str:
+def _get_sig(delta: list[tp.Any]) -> str:
     # Return signature from a jsonable content.
     sorted_delta = sorted(delta)
-    return sha1(json.dumps(sorted_delta).encode('utf8')).hexdigest()[:8]
+    return sha1(json.dumps(sorted_delta).encode("utf8")).hexdigest()[:8]
 
 
 @dataclass(init=False)
@@ -30,16 +30,22 @@ class XP:
 
     One XP can have multiple runs.
     """
+
     dora: DoraConfig
     cfg: tp.Any
-    argv: tp.List[str]
+    argv: list[str]
     sig: str
-    delta: tp.Optional[tp.List[tp.Tuple[str, tp.Any]]]
+    delta: list[tuple[str, tp.Any]] | None
     link: Link = field(compare=False)
 
-    def __init__(self, dora: DoraConfig, cfg: tp.Any, argv: tp.List[str],
-                 delta: tp.Optional[tp.List[tp.Tuple[str, tp.Any]]] = None,
-                 sig: tp.Optional[str] = None):
+    def __init__(
+        self,
+        dora: DoraConfig,
+        cfg: tp.Any,
+        argv: list[str],
+        delta: list[tuple[str, tp.Any]] | None = None,
+        sig: str | None = None,
+    ):
         self.dora = dora
         self.cfg = cfg
         self.argv = argv
@@ -60,9 +66,9 @@ class XP:
     @property
     def code_folder(self) -> Path:
         if self.dora.git_save:
-            return self.folder / 'code'
+            return self.folder / "code"
         else:
-            return Path('.')
+            return Path(".")
 
     @property
     def _xp_submitit(self) -> Path:
@@ -92,13 +98,30 @@ class XP:
         return self.folder / ".argv.json"
 
     @property
-    def _shared_folder(self) -> tp.Optional[Path]:
+    def _delta_cache(self) -> Path:
+        """Where the delta is persisted, alongside the argv cache.
+
+        The delta is what the signature is computed from, and it cannot be
+        recovered from a stored config alone: it is a diff against a base config
+        that is not saved anywhere, and it collapses `+a.b.c=...` additions into
+        whole subtrees. Writing it down when the XP is created is the only way to
+        recover an experiment's name once its config files have moved on.
+        """
+        return self.folder / ".delta.json"
+
+    @property
+    def _hydra_config(self) -> Path:
+        """The composed config Hydra saved for the run that actually happened."""
+        return self.folder / ".hydra" / "config.yaml"
+
+    @property
+    def _shared_folder(self) -> Path | None:
         if self.dora.shared is not None:
             return self.dora.shared / self.dora.xps / self.sig
         return None
 
     @property
-    def _shared_argv_cache(self) -> tp.Optional[Path]:
+    def _shared_argv_cache(self) -> Path | None:
         if self._shared_folder is not None:
             return self._shared_folder / ".argv.json"
         return None
@@ -121,7 +144,7 @@ class _Context:
     # Used to keep track of a running XP and be able to provide
     # it on demand with `get_xp`.
     def __init__(self) -> None:
-        self._xps: tp.List[XP] = []
+        self._xps: list[XP] = []
 
     @contextmanager
     def enter_xp(self, xp: XP, stack: bool = False):
@@ -150,3 +173,26 @@ def get_xp() -> XP:
 def is_xp() -> bool:
     """Return True if running within an XP."""
     return bool(_context._xps)
+
+
+def load_xp(dora: "DoraConfig", sig: str) -> XP:
+    """Read an experiment straight from its folder.
+
+    The counterpart to `DecoratedMain.get_existing_xp_from_sig` for callers that
+    have a `DoraConfig` but do not want to import the project to get one. The
+    signature is taken as given -- the folder name is the ground truth -- and
+    `cfg` is left as None, since loading it is main-specific.
+    """
+    xp = XP(dora=dora, cfg=None, argv=[], sig=sig)
+    if xp._argv_cache.exists():
+        with open(xp._argv_cache) as file:
+            xp.argv = json.load(file)
+    elif xp._shared_argv_cache is not None and xp._shared_argv_cache.exists():
+        with open(xp._shared_argv_cache) as file:
+            xp.argv = json.load(file)
+    else:
+        raise RuntimeError(f"Could not find experiment with signature {sig}")
+    if xp._delta_cache.exists():
+        with open(xp._delta_cache) as file:
+            xp.delta = json.load(file)
+    return xp

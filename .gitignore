@@ -13,3 +13,6 @@ __pycache__
 /examples/outputs_complex
 /examples/outputs_pl
 uv.lock
+
+# Locally generated golden signature corpora (contain project-specific argv).
+.golden/

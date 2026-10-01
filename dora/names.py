@@ -4,20 +4,18 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import typing as tp
 from collections import OrderedDict
 from pathlib import Path
-import typing as tp
 
 from .xp import XP
 
 
 class NamesMixin:
-    """Mixin that handles everything related to the naming of experiments.
-    """
+    """Mixin that handles everything related to the naming of experiments."""
 
     def short_name_part(self, key: str, value: tp.Any) -> str:
-        """Shorten the name of an XP.
-        """
+        """Shorten the name of an XP."""
         key_parts = key.split(".")
         short_key_parts = []
         for part in key_parts[:-1]:
@@ -38,11 +36,16 @@ class NamesMixin:
         raise NotImplementedError()
 
     def get_name(self, xp: XP) -> str:
-        """Returns the XP name.
-        """
+        """Returns the XP name."""
+        if not self.get_name_parts(xp):
+            # Nothing to build a name out of -- an XP loaded from disk with no
+            # persisted delta, say. The signature is the one thing always true.
+            return xp.sig
         return self.get_names([xp])[-1]
 
-    def _get_short_name(self, parts: OrderedDict, reference: dict = {}):
+    def _get_short_name(self, parts: OrderedDict, reference: dict | None = None):
+        if reference is None:
+            reference = {}
         out_parts = []
         for key, value in parts.items():
             if key not in reference:
@@ -50,7 +53,7 @@ class NamesMixin:
                 out_parts.append(part)
         return " ".join(out_parts)
 
-    def get_names(self, xps: tp.List[XP]) -> tp.Tuple[tp.List[str], str]:
+    def get_names(self, xps: list[XP]) -> tuple[list[str], str]:
         """Given list of XPs, return individual XP names + base name.
         The common part in all XPs are factored into the base name
         """
@@ -69,8 +72,10 @@ class NamesMixin:
             all_xp_parts.append(parts)
 
         names = []
-        for parts in all_xp_parts:
-            names.append(self._get_short_name(parts, reference))
+        for xp, parts in zip(xps, all_xp_parts):
+            # With no parts at all there is nothing to name it by; the signature
+            # is the one thing always true about an experiment.
+            names.append(self._get_short_name(parts, reference) if parts else xp.sig)
 
         base_name = self._get_short_name(reference)
         return names, base_name

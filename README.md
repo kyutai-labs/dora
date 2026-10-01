@@ -23,9 +23,11 @@ width="1000px"></p>
 - [`dora run`: Running XP locally](#dora-run-running-xp-locally)
 - [`dora launch`: Launching XP remotely](#dora-launch-launching-xp-remotely)
 - [`dora info`: Inspecting an XP](#dora-info-inspecting-an-xp)
+- [Reading XPs cheaply: `status`, `metrics`, `log`, `why`](#reading-xps-cheaply-status-metrics-log-why)
 - [`dora grid`: Managing a grid search](#dora-grid-managing-a-grid-search)
 - [The Dora API](#the-dora-api)
 - [Sharing XPs](#sharing-xps)
+- [`dora.toml`: static project settings](#doratoml-static-project-settings)
 - [Advanced configuration](#advanced-configuration)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -334,6 +336,133 @@ The info command supports a number of flags:
 - `-t`: tail the log for the main task.
 
 
+## Reading XPs cheaply: `status`, `metrics`, `log`, `why`
+
+`dora info` and `dora grid` are built for a human watching a terminal: they print
+an XP's whole argv, and a colourised, line-wrapped table. That is expensive to
+read when you only wanted one number, and outright hostile to anything consuming
+it programmatically (a script, a notebook, an LLM agent).
+
+These four commands answer narrower questions, with capped and uncoloured output:
+
+```bash
+dora status <grid|sig|jobid>...          # one line per XP: state, epoch, last metrics
+dora metrics SIGNATURE [--every 20]      # downsampled history instead of the whole file
+dora log SIGNATURE [--tail 40] [--grep]  # log with ANSI stripped and huge lines cut
+dora why SIGNATURE                       # classify why a job died
+```
+
+`dora grid` takes the same treatment, for the dry run and for live monitoring
+alike:
+
+```bash
+dora grid GRID --dry_run --compact   # what it would schedule, in a tenth the output
+dora grid GRID --json                # live grid state, machine readable
+```
+
+The compact rendering also names the experiments the grid has *stopped*
+producing, separating the running ones a launch would cancel from the finished
+ones it would merely drop from the grid.
+
+They are read-only and never schedule or cancel anything. Targets may be
+signatures, grid names, Slurm job ids, or `@sig` to force signature
+interpretation.
+
+### Output modes
+
+Every command, `dora grid` included, shares the same three:
+
+| | |
+|---|---|
+| `--pretty` | colourised, generous limits. The default when stdout is a terminal. |
+| `--compact` | uncoloured and capped. The default when stdout is not. |
+| `--json` | one object, complete unless `--limit` says otherwise. |
+
+The default follows stdout, the way `ls` and `git` decide about colour, so
+piping into a file or a script does the useful thing without being told, and a
+person at a terminal gets something readable. `NO_COLOR` is honoured. For
+`dora grid`, pretty is the treetable it has always printed.
+
+Human-readable `status` and `running` output wraps experiment names at 100
+characters. Both omit the common name part. This is the width of the name column,
+not the entire table. Change it in the invoking repository's `dora.toml` (also works for `running` with no experiment directory configured):
+
+```toml
+[dora]
+name_width = 80
+```
+
+The width must be a positive integer. `grid` uses its Explorer's table wrapping
+settings, such as `tt.leaf("name", wrap=80)`, independently of `name_width`.
+Compact/non-TTY output keeps shortened, unwrapped names; `--json` keeps its full structured values without display
+wrapping. Human-readable output still limits the number of jobs shown, but does
+not cut the text of a displayed name to meet a total character budget.
+
+`dora log` follows the same rule for the log's *own* colour: kept when pretty,
+stripped otherwise, and never present in JSON.
+
+### Running jobs and GPU usage
+
+```bash
+dora running                         # your running jobs across repos, grouped by grid
+dora running --compact               # plain, unwrapped tables (default without a TTY)
+dora running --json                  # one complete JSON object
+dora running --pretty --limit 100    # human-readable tables, even through a pipe
+```
+
+The overview works from any directory, with no project or training import. It
+queries your running Slurm jobs once, discovers experiment roots from log paths
+and static project settings at job working directories, and reads saved metadata.
+Array tasks and running dependent attempts are included. It reports allocated GPUs
+per job, per grid, and overall, plus job IDs, signatures, partitions, and short
+automatic names with common name parts omitted. Pending and completed
+jobs are excluded. GPU counts come from live allocations, including multi-node
+jobs; missing allocation information is shown as unknown, with `unknown_gpus`
+counts alongside the known GPU subtotal.
+
+Grid membership comes from saved links, without evaluating grid files. An XP
+in several grids appears in each, but overall totals count each job once.
+Membership does not identify which grid originally submitted a shared XP.
+Experiments with no grid appear under `(no grid)` (`null` in JSON). Identical grid
+names in different experiment roots remain separate; `root` identifies the
+experiment directory. Jobs with unavailable or unrecognised Dora metadata appear
+under `(unidentified)`, retaining their scheduler names and GPU counts. They have
+null `root`, `grid`, and `sig` values in JSON. Discovery uses the standard Dora
+folder layout, or a resolvable `dora.toml` at the job's working directory; grid
+modules and the branch that launched them do not need to be present.
+
+Compact output uses uncoloured, aligned tables grouped by grid, with one line
+per job and no name wrapping. Job names contain the parts that vary within the grid;
+common name parts are omitted in every mode. Compact names are shortened with
+an explicit omitted-parts marker; `--json` preserves full job names and nests
+job records under `grids`. GPU totals always cover all matching jobs. In JSON,
+`count` includes all matching jobs; `shown` counts displayed jobs. Rendered modes show up to 40 jobs (200 in pretty mode), overridable with
+`--limit`; JSON has no default job limit. Scheduler failures return a nonzero
+exit status instead of reporting an empty queue.
+
+### Which metrics `dora status` shows
+
+`dora grid` records the metric columns its Explorer displays into
+`<grid folder>/.metrics.json`, and `dora status` reads them back. That way the
+two commands agree on what is worth looking at, and `status` gets the
+project-specific answer without importing the project. Columns are recorded
+stage-qualified (`valid.ce`), so a grid whose experiments logged different
+stages cannot silently mix them into one column.
+
+For a bare signature, or a grid launched before the file existed, `status`
+falls back to guessing from the last epoch of the history: metrics whose names
+look like the ones people track, one per family, so `ce_q1` .. `ce_q5` do not
+take every column. `--keys a,b` overrides either.
+
+`dora why` recognises out-of-memory, NCCL timeouts, Hydra config errors and Slurm
+step failures, deduplicates across ranks, and falls back to the tail of the newest
+log. For scale, on a 20-XP grid: `dora status` prints ~2.8KB in half a second,
+where `dora grid --dry_run --no_monitoring` prints 26KB in twenty.
+
+With a [`dora.toml`](#doratoml-static-project-settings) these commands do not
+import your training package at all, which on a typical project saves ten seconds
+of importing torch to answer a question that is a few file reads.
+
 ## `dora grid`: Managing a grid search
 
 The main benefit from Dora is the ability to handle arbitarily complex grid searches.
@@ -616,6 +745,64 @@ dora:
 Then other teammates can reference any SIG from an XP launched by other team members within the Dora commands.
 
 
+## `dora.toml`: static project settings
+
+Dora normally discovers a project by importing its training module. For read-only
+commands that is a steep price -- importing a research codebase pulls in torch and
+takes seconds to answer a question that is a few file reads.
+
+An optional `dora.toml` at the repository root states the static parts once:
+
+```toml
+[project]
+package     = "mypackage"
+main_module = "train"
+config_path = "config"     # Hydra projects
+config_name = "config"
+hydra       = { version_base = "1.1" }
+use_fast_parser = false   # opt in to the filesystem config parser
+
+[dora]
+dir      = "${env:MY_XP_ROOT}"
+exclude  = ["device", "wandb.*"]
+git_save = true
+```
+
+For Hydra projects it also replaces the `dora:` block in the composed config:
+`HydraMain` reads `dora.toml` first and the YAML block on top, so the block can
+be deleted once the settings live here. Keeping both is how the two drift apart,
+and since `exclude` decides signatures, drift there silently re-signs every
+experiment.
+
+It is found by walking up from the working directory, so `dora` works from
+anywhere in the repository rather than only from its root. Precedence is
+command-line flags, then environment variables, then `dora.toml`, then scanning
+for a package. Without the file everything behaves as before, just slower.
+
+Values may interpolate the environment as `${env:VAR}`, with an optional fallback
+as `${env:VAR:-/some/default}`. If your experiment directory depends on which
+cluster you are on, say so with probes -- the first marker path that exists wins:
+
+```toml
+[[dora.dir_probe]]
+probe = "/lustre/somecluster"
+dir   = "/lustre/somecluster/xps/${env:USER}"
+
+[[dora.dir_probe]]
+probe = "/data/othercluster"
+dir   = "/data/${env:USER}/xps"
+```
+
+Note that in TOML every key after an array-of-tables belongs to it, so keep
+`[[dora.dir_probe]]` entries at the end of the `[dora]` section.
+
+If nothing resolves the directory, Dora falls back to importing the project
+rather than guessing: pointing at the wrong experiment directory would silently
+look like an empty one.
+
+`templates/SKILL.md` in this repository is a ready-made Claude Code skill
+describing all of the above; copy it into your project's `.claude/skills/`.
+
 ## Advanced configuration
 
 
@@ -741,3 +928,77 @@ Dora is released under the MIT license as found in the [LICENSE](LICENSE) file.
 ## Contributing
 
 Before submitting any change, please run `make` to run unit tests and code linting.
+
+
+### Fast config parser (opt in)
+
+Set this in your project's existing `dora.toml`:
+
+```toml
+[project]
+use_fast_parser = true
+```
+
+The default is `false`. Keep your existing `@hydra_main(...)` decorator.
+With the flag enabled, `dora.parser` composes configs and runs the task without
+importing Hydra. Training still receives a mutable OmegaConf `DictConfig` with
+lazy interpolation and struct mode.
+
+The supported subset includes filesystem YAML groups, nested defaults,
+`_self_`, optional defaults, package relocation, and ordinary scalar/list/dict
+overrides (including `+` and `++`). It preserves Dora's existing group deltas
+and experiment signatures. The standalone parser also handles deletion syntax;
+Dora's existing delta rules still require each experiment to retain its base keys.
+Hydra plugins, ConfigStore schemas, search paths, runtime `hydra:` settings,
+interpolated defaults, and multirun are unsupported; use the default backend
+for those. Hydra-specific command-line switches are rejected.
+
+Group bases are cached **in memory**, per decorated main, with at most 32 group
+combinations. Files are checked for changes on reuse. Cached DictConfigs are
+read-only; each experiment receives its own mutable config. There is no cache
+file. For direct composition, use `from dora.parser import ConfigParser`;
+`parser.clear_cache()` clears both parsed files and group bases.
+
+The fast execution path saves unresolved `.hydra/config.yaml` and
+`.hydra/overrides.yaml` on rank zero, and logs to the console and
+`<entrypoint>.log` in the XP folder. It preserves the decorator's
+working-directory default: absent `version_base` or `"1.1"` changes to the XP
+folder, while `None` or `"1.2"`/`"1.3"` keeps the working directory.
+Use `dora.to_absolute_path()` for paths relative to the original directory.
+It does not initialize HydraConfig or produce `.hydra/hydra.yaml`.
+
+### Restarting an existing experiment
+
+Every successful Slurm submission saves the complete Dora `SlurmConfig` in
+`<xp>/slurm.json`. This includes parameters set by the grid, such as GPUs,
+partition, time, setup commands, Python executable, and dependent jobs. It is
+replaced on the next successful launch, including launches in a job array;
+a failed submission leaves the previous snapshot in place.
+
+```bash
+dora status <sig> --cancel
+dora status <sig> --restart --dry-run
+dora status <sig> --restart
+dora status <sig> --restart --partition new_partition
+```
+
+These actions also accept multiple signatures, job IDs, or a grid name.
+Grid names expand from saved membership links; no grid is evaluated. `--limit`
+limits displayed results only. Add `--json` for structured output.
+
+Cancellation uses recorded job IDs without importing training. It includes
+dependent jobs and leaves other members of an array alone. Restart uses saved
+`.argv.json` and `slurm.json`, cancels an existing active attempt, and submits
+the selected experiment again, preserving its folder and checkpoints. Older
+experiments can fall back to `job.json`'s `slurm_config` field.
+
+Pass `-p` / `--partition` with `--restart` to override only the saved partition.
+The selected partition appears in the output, including `--dry-run`; a dry run
+leaves the saved settings untouched. A successful restart persists the new
+partition for future restarts.
+
+Restart imports the current training entry point and composes only the selected
+experiments, using the current code/configs and normal `git_save` behavior.
+It refuses to proceed if the saved arguments now produce a different signature
+or experiment folder, or if launch settings are missing. Plain `dora status`
+remains read-only.

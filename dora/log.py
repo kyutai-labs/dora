@@ -4,13 +4,11 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from collections.abc import Iterable, Sized
 import logging
 import sys
 import time
 import typing as tp
-
-from treetable.text import colorize
+from collections.abc import Iterable, Sized
 
 
 class LogProgress:
@@ -27,15 +25,18 @@ class LogProgress:
         - name (str): prefix to use in the log.
         - level: logging level (like `logging.INFO`).
     """
-    def __init__(self,
-                 logger: logging.Logger,
-                 iterable: Iterable,
-                 updates: int = 5,
-                 min_interval: int = 1,
-                 time_per_it: bool = False,
-                 total: tp.Optional[int] = None,
-                 name: str = "LogProgress",
-                 level: int = logging.INFO):
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        iterable: Iterable,
+        updates: int = 5,
+        min_interval: int = 1,
+        time_per_it: bool = False,
+        total: int | None = None,
+        name: str = "LogProgress",
+        level: int = logging.INFO,
+    ):
         self.iterable = iterable
         if total is None:
             assert isinstance(iterable, Sized)
@@ -66,18 +67,14 @@ class LogProgress:
         if self._will_log:
             self._log()
             self._will_log = False
-        try:
-            value = next(self._iterator)
-        except StopIteration:
-            raise
-        else:
-            self._index += 1
-            if self.updates > 0:
-                log_every = max(self.min_interval, self.total // self.updates)
-                # logging is delayed by 1 it, in order to have the metrics from update
-                if self._index >= 1 and self._index % log_every == 0:
-                    self._will_log = True
-            return value
+        value = next(self._iterator)
+        self._index += 1
+        if self.updates > 0:
+            log_every = max(self.min_interval, self.total // self.updates)
+            # logging is delayed by 1 it, in order to have the metrics from update
+            if self._index >= 1 and self._index % log_every == 0:
+                self._will_log = True
+        return value
 
     def _log(self):
         self._speed = (1 + self._index) / (time.time() - self._begin)
@@ -89,13 +86,24 @@ class LogProgress:
         elif self.time_per_it:
             speed = f"{1000 / self._speed:.1f} ms/it"
         elif self._speed < 0.1:
-            speed = f"{1/self._speed:.1f} sec/it"
+            speed = f"{1 / self._speed:.1f} sec/it"
         else:
             speed = f"{self._speed:.2f} it/sec"
         out = f"{self.name} | {self._index}/{self.total} | {speed}"
         if infos:
             out += " | " + infos
         self.logger.log(self.level, out)
+
+
+def colorize(text: str, color: str) -> str:
+    """Wrap `text` in an ANSI colour code.
+
+    Re-exported by `dora.grid`. Kept as a wrapper so that `treetable` -- needed
+    only when something is actually rendered -- stays off the import path.
+    """
+    from treetable.text import colorize as _colorize
+
+    return _colorize(text, color)
 
 
 def bold(text: str) -> str:
@@ -106,8 +114,7 @@ def bold(text: str) -> str:
 
 
 def red(text: str) -> str:
-    """Display text in red.
-    """
+    """Display text in red."""
     # see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
     return colorize(text, "31")
 
@@ -127,16 +134,17 @@ _dora_handler = None
 def setup_logging(verbose=False):
     global _dora_handler  # I know this is dirty
     log_level = logging.DEBUG if verbose else logging.INFO
-    logger = logging.getLogger('dora')
+    logger = logging.getLogger("dora")
     logger.setLevel(log_level)
     _dora_handler = logging.StreamHandler(sys.stderr)
     _dora_handler.setFormatter(
-        logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'))
+        logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s")
+    )
     _dora_handler.setLevel(log_level)
     logger.addHandler(_dora_handler)
 
 
 def disable_logging():
     assert _dora_handler is not None
-    logger = logging.getLogger('dora')
+    logger = logging.getLogger("dora")
     logger.removeHandler(_dora_handler)

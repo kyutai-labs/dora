@@ -4,37 +4,42 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Scheduling and job monitoring utilities.
-"""
-from contextlib import contextmanager, ExitStack
-from dataclasses import dataclass, field, asdict
+"""Scheduling and job monitoring utilities."""
+
+from __future__ import annotations
+
 import json
 import logging
-from pathlib import Path
-import pickle
 import os
+import pickle
 import subprocess as sp
 import sys
 import tempfile
 import typing as tp
+from contextlib import ExitStack, contextmanager
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
-
-from submitit import SlurmJob
-import submitit
+# submitit costs ~80ms to import and is only needed once we actually talk to
+# Slurm. With `from __future__ import annotations` every reference below is a
+# string, so the real import happens at the three call sites that submit,
+# cancel or poll.
+if tp.TYPE_CHECKING:
+    import submitit
+    from submitit import SlurmJob
 
 from . import git_save
 from .conf import SlurmConfig, SubmitRules
 from .log import disable_logging, setup_logging
 from .main import DecoratedMain
-from .utils import try_load
+from .utils import jsonable, try_load, write_and_rename
 from .xp import XP, _get_sig, get_xp
-
 
 logger = logging.getLogger(__name__)
 
 
 PreemptionCallback = tp.Callable[[], None]
-_preemption_callbacks: tp.List[PreemptionCallback] = []
+_preemption_callbacks: list[PreemptionCallback] = []
 
 
 def register_preemption_callaback(callback: PreemptionCallback):
@@ -42,15 +47,21 @@ def register_preemption_callaback(callback: PreemptionCallback):
 
 
 class _SubmitItTarget:
-    def __call__(self, main_pickled: bytes, argv: tp.Sequence[str], requeue: bool = True,
-                 local_code: bool = False):
+    def __call__(
+        self,
+        main_pickled: bytes,
+        argv: tp.Sequence[str],
+        requeue: bool = True,
+        local_code: bool = False,
+    ):
         setup_logging()
-        logger.info("SubmitItTarget starting, python is %s, version is %r",
-                    sys.executable, sys.version)
+        logger.info(
+            "SubmitItTarget starting, python is %s, version is %r", sys.executable, sys.version
+        )
         logger.info("CWD is %s", os.getcwd())
         with ExitStack() as stack:
             if local_code:
-                code_path = Path('.').resolve()
+                code_path = Path.cwd()
                 tar_path = code_path.parent / (code_path.name + ".tar")
                 if not tar_path.exists():
                     logger.critical("Could not find tar file %s to run the code locally", tar_path)
@@ -68,11 +79,12 @@ class _SubmitItTarget:
                 logger.info("sys.path is now %r", sys.path)
 
             from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
+
             self.requeue = requeue
             spec = get_distrib_spec()
             # We export the RANK as it can be used to customize logging early on
             # in the called program (e.g. using Hydra).
-            os.environ['RANK'] = str(spec.rank)
+            os.environ["RANK"] = str(spec.rank)
             sys.argv[1:] = argv
             logger.info("Loading pickled main")
             main = pickle.loads(main_pickled)
@@ -82,6 +94,7 @@ class _SubmitItTarget:
 
     def checkpoint(self, *args, **kwargs):
         from .distrib import get_distrib_spec  # this will import torch which can be quite slow.
+
         for callback in _preemption_callbacks:
             callback()
 
@@ -93,6 +106,8 @@ class _SubmitItTarget:
             xp = get_xp()
             if xp.rendezvous_file.exists():
                 xp.rendezvous_file.unlink()
+        import submitit
+
         return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
 
 
@@ -101,12 +116,13 @@ class Sheep:
     A Sheep is a specific run for a given XP. Sheeps are managed
     by the Shepherd.
     """
+
     def __init__(self, xp: XP):
         self.xp = xp
-        self.job: tp.Optional[submitit.SlurmJob] = None
+        self.job: submitit.SlurmJob | None = None
         # Other jobs contain the list of other jobs in the array
-        self._other_jobs: tp.List[submitit.SlurmJob] = []
-        self._dependent_jobs: tp.List[submitit.SlurmJob] = []
+        self._other_jobs: list[submitit.SlurmJob] = []
+        self._dependent_jobs: list[submitit.SlurmJob] = []
         if self._job_file.exists():
             content = try_load(self._job_file)
             if isinstance(content, tuple):
@@ -128,33 +144,29 @@ class Sheep:
         return self.xp.folder / self.xp.dora.shep.json_job_file
 
     @staticmethod
-    def _get_state(job, other_jobs=[], mode="standard"):
-        """Return the current state of the `Sheep`.
-        """
+    def _get_state(job, other_jobs=(), mode="standard"):
+        """Return the current state of the `Sheep`."""
         if job is None:
             return None
         state = job.watcher.get_state(job.job_id, mode)
-        if state == 'UNKNOWN' and other_jobs:
-            if any(job.state != 'UNKNOWN' for job in other_jobs):
-                # When cancelling single entries in a job array,
-                # sacct will just completely forget about it insted of marking
-                # it as cancelled. So we use a specific 'MISSING' status to handle that.
-                state = 'MISSING'
-        if state.startswith('CANCELLED'):
-            return 'CANCELLED'
+        if state == "UNKNOWN" and other_jobs and any(job.state != "UNKNOWN" for job in other_jobs):
+            # When cancelling single entries in a job array,
+            # sacct will just completely forget about it insted of marking
+            # it as cancelled. So we use a specific 'MISSING' status to handle that.
+            state = "MISSING"
+        if state.startswith("CANCELLED"):
+            return "CANCELLED"
         return state
 
     @staticmethod
     def _is_done(job, mode="standard"):
-        """Return True if the job is no longer running on the cluster.
-        """
+        """Return True if the job is no longer running on the cluster."""
         if job is None:
             return True
         return job.watcher.is_done(job.job_id, mode)
 
     def is_done(self, mode="standard"):
-        """Return True if the job is no longer running on the cluster.
-        """
+        """Return True if the job is no longer running on the cluster."""
         if self.job is None:
             return True
         if self._dependent_jobs:
@@ -175,7 +187,7 @@ class Sheep:
             state = None
             for job in chain:
                 state = Sheep._get_state(job, [], mode)
-                if state == 'COMPLETED' or not Sheep._is_done(job, mode):
+                if state == "COMPLETED" or not Sheep._is_done(job, mode):
                     return state
             assert state is not None
             return state
@@ -186,9 +198,8 @@ class Sheep:
         return self.xp.submitit / f"{job_id}_0_log.out"
 
     @property
-    def current_job_id(self) -> tp.Optional[str]:
-        """Return the current job id, especially useful when using dependent jobs.
-        """
+    def current_job_id(self) -> str | None:
+        """Return the current job id, especially useful when using dependent jobs."""
         if self.job is None:
             return None
         job_id = self.job.job_id
@@ -200,8 +211,7 @@ class Sheep:
 
     @property
     def log(self):
-        """Return the path to the main log.
-        """
+        """Return the path to the main log."""
         job_id = self.current_job_id
         if job_id is None:
             return None
@@ -215,16 +225,28 @@ class Sheep:
         return out
 
 
-def no_log(x: str):
-    """No logging logging function, passed to `Shepherd`.
+def relink(link: Path, target: Path):
+    """Point `link` at `target`, replacing whatever was there.
+
+    Slurm job ids are not unique forever: the accounting database gets reset,
+    and ids start again from a low number. So a `by_id` entry may well already
+    exist and point at some unrelated, older experiment. Failing on that would
+    make submission crash for no good reason, and keeping the old target would
+    silently answer `dora info -j` with the wrong experiment.
     """
-    pass
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(target)
+
+
+def no_log(x: str):
+    """No logging logging function, passed to `Shepherd`."""
 
 
 @dataclass
 class _JobArray:
     slurm_config: SlurmConfig
-    sheeps: tp.List[Sheep] = field(default_factory=list)
+    sheeps: list[Sheep] = field(default_factory=list)
 
 
 class Shepherd:
@@ -235,20 +257,38 @@ class Shepherd:
         main (DecoratedMain): main function decorated by Dora.
         log (callable): log function, if provided should take a single string
             argument.
+        read_only (bool): if True, constructing the Shepherd has no side effects:
+            no bookkeeping folders are created and the orphan check -- which can
+            cancel Slurm jobs -- is skipped. Use this whenever you only intend to
+            look at job state. Submitting from a read-only Shepherd is refused.
+        check_orphans (bool): recover orphaned submissions on startup. Disable this
+            for operations explicitly targeting existing experiments.
     """
-    def __init__(self, main: DecoratedMain, log: tp.Callable[[str], None] = no_log):
+
+    def __init__(
+        self,
+        main: DecoratedMain,
+        log: tp.Callable[[str], None] = no_log,
+        read_only: bool = False,
+        check_orphans: bool = True,
+    ):
         self.main = main
-        self._by_id.mkdir(exist_ok=True, parents=True)
-        self._orphans.mkdir(exist_ok=True, parents=True)
-        self._arrays.mkdir(exist_ok=True, parents=True)
+        self.read_only = read_only
+        if not read_only:
+            self._by_id.mkdir(exist_ok=True, parents=True)
+            self._orphans.mkdir(exist_ok=True, parents=True)
+            self._arrays.mkdir(exist_ok=True, parents=True)
         self.log = log
 
         self._in_job_array: bool = False
-        self._existing_git_clone: tp.Optional[Path] = None
-        self._to_cancel: tp.List[submitit.SlurmJob] = []
-        self._to_submit: tp.List[_JobArray] = []
+        self._existing_git_clone: Path | None = None
+        self._to_cancel: list[submitit.SlurmJob] = []
+        self._to_submit: list[_JobArray] = []
 
-        self._check_orphans()
+        if not read_only and check_orphans:
+            # Cancels jobs left behind by a Dora that crashed mid-submit, so it
+            # must never run for a caller that is only reading.
+            self._check_orphans()
 
     def get_sheep_from_argv(self, argv: tp.Sequence[str]) -> Sheep:
         """
@@ -260,7 +300,7 @@ class Shepherd:
         xp = self.main.get_xp(argv)
         return Sheep(xp)
 
-    def get_sheep_from_sig(self, sig: str) -> tp.Optional[Sheep]:
+    def get_sheep_from_sig(self, sig: str) -> Sheep | None:
         """
         Returns a `Sheep` given the XP signature, if any exists, otherwise
         returns None.
@@ -268,7 +308,7 @@ class Shepherd:
         xp = self.main.get_xp_from_sig(sig)
         return Sheep(xp)
 
-    def get_sheep_from_job_id(self, job_id: str) -> tp.Optional[Sheep]:
+    def get_sheep_from_job_id(self, job_id: str) -> Sheep | None:
         """
         Returns the `Sheep` associated with the given `job_id`. If no sheep
         is found, returns None.
@@ -284,6 +324,8 @@ class Shepherd:
         """
         Force an update of all job states with submitit.
         """
+        from submitit import SlurmJob
+
         SlurmJob.watcher.update()
 
     @contextmanager
@@ -305,12 +347,18 @@ class Shepherd:
         """
         if sheep.job is not None:
             state = sheep.state()
-            if state == 'COMPLETED':
+            if state == "COMPLETED":
                 if rules.replace_done:
                     logger.debug(f"Ignoring previously completed job {sheep.job.job_id}")
                     sheep.job = None
-            elif state in ["FAILED", "CANCELLED", "OUT_OF_MEMORY", "TIMEOUT", "MISSING",
-                           "NODE_FAIL"]:
+            elif state in [
+                "FAILED",
+                "CANCELLED",
+                "OUT_OF_MEMORY",
+                "TIMEOUT",
+                "MISSING",
+                "NODE_FAIL",
+            ]:
                 logger.debug(f"Previous job {sheep.job.job_id} failed or was canceled")
                 if rules.retry:
                     sheep.job = None
@@ -326,9 +374,12 @@ class Shepherd:
             assert slurm_config == self._to_submit[-1].slurm_config
             self._to_submit[-1].sheeps.append(sheep)
 
-    def cancel_lazy(self, job: tp.Optional[submitit.SlurmJob] = None,
-                    dependent_jobs: tp.Sequence[submitit.SlurmJob] = [],
-                    sheep: tp.Optional[Sheep] = None):
+    def cancel_lazy(
+        self,
+        job: submitit.SlurmJob | None = None,
+        dependent_jobs: tp.Sequence[submitit.SlurmJob] = [],
+        sheep: Sheep | None = None,
+    ):
         """
         Cancel a job. The job is actually cancelled only when `commit()` is called.
         You can either provide manually both a job and its dependents, or a sheep that
@@ -347,6 +398,10 @@ class Shepherd:
         Commit all changes registered so far with either `maybe_submit_lazy()`
         and `cancel_lazy()`.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "This Shepherd was created with read_only=True and cannot submit or cancel jobs."
+            )
         if self._to_cancel:
             self._cancel(self._to_cancel)
             self._to_cancel = []
@@ -368,79 +423,86 @@ class Shepherd:
     def _arrays(self) -> Path:
         return self.main.dora.dir / self.main.dora.shep.arrays
 
-    def _cancel(self, jobs: tp.List[SlurmJob]):
+    def _cancel(self, jobs: list[SlurmJob]):
         cancel_cmd = ["scancel"] + [job.job_id for job in jobs]
         logger.debug("Running %s", " ".join(cancel_cmd))
         sp.run(cancel_cmd, check=True)
 
-    def _get_submitit_executor(self, name: str, folder: Path,
-                               slurm_config: SlurmConfig) -> submitit.SlurmExecutor:
-        os.environ['SLURM_KILL_BAD_EXIT'] = '1'  # Kill the job if any of the task fails
-        kwargs = dict(slurm_config.__dict__)
+    def _get_submitit_executor(
+        self, name: str, folder: Path, slurm_config: SlurmConfig
+    ) -> submitit.SlurmExecutor:
+        os.environ["SLURM_KILL_BAD_EXIT"] = "1"  # Kill the job if any of the task fails
+        kwargs = asdict(slurm_config)
+        import submitit
+
         executor = submitit.SlurmExecutor(
-            folder=folder, max_num_timeout=kwargs.pop('max_num_timeout'),
-            python=kwargs.pop('python'))
+            folder=folder,
+            max_num_timeout=kwargs.pop("max_num_timeout"),
+            python=kwargs.pop("python"),
+        )
         gpus = slurm_config.gpus
         if gpus > 8:
             if gpus % 8 != 0:
                 raise ValueError("Can only take <= 8 gpus, or multiple of 8 gpus")
-            kwargs['nodes'] = gpus // 8
+            kwargs["nodes"] = gpus // 8
             gpus_per_node = 8
         else:
             gpus_per_node = gpus
-            kwargs['nodes'] = 1
+            kwargs["nodes"] = 1
         no_gpus = gpus == 0
         if no_gpus:
             gpus_per_node = 1
         mem_per_gpu = slurm_config.mem_per_gpu
         if mem_per_gpu:
             mem = slurm_config.mem_per_gpu * gpus_per_node
-            kwargs['mem'] = f"{mem}GB"
+            kwargs["mem"] = f"{mem}GB"
 
         if not no_gpus:
-            kwargs['gres'] = f'gpu:{gpus_per_node}'
+            kwargs["gres"] = f"gpu:{gpus_per_node}"
         if slurm_config.one_task_per_node:
-            kwargs['ntasks_per_node'] = 1
+            kwargs["ntasks_per_node"] = 1
             if slurm_config.cpus_per_task is None:
-                kwargs['cpus_per_task'] = gpus_per_node * slurm_config.cpus_per_gpu
+                kwargs["cpus_per_task"] = gpus_per_node * slurm_config.cpus_per_gpu
         else:
-            kwargs['ntasks_per_node'] = gpus_per_node
+            kwargs["ntasks_per_node"] = gpus_per_node
             if slurm_config.cpus_per_task is None:
-                kwargs['cpus_per_task'] = slurm_config.cpus_per_gpu
-        container_chdir = kwargs.pop('container_chdir')
-        force_chdir = kwargs.pop('force_chdir')
+                kwargs["cpus_per_task"] = slurm_config.cpus_per_gpu
+        container_chdir = kwargs.pop("container_chdir")
+        force_chdir = kwargs.pop("force_chdir")
         if force_chdir is not None:
             container_chdir = force_chdir
         if container_chdir:
-            srun_args = kwargs.get('srun_args', [])
-            srun_args.extend(['--container-workdir', os.getcwd()])
-            kwargs['srun_args'] = srun_args
+            srun_args = kwargs.get("srun_args", [])
+            srun_args.extend(["--container-workdir", os.getcwd()])
+            kwargs["srun_args"] = srun_args
         additional: dict[str, tp.Any] = {}
-        if kwargs.get('nodelist') is not None:
-            additional['nodelist'] = ",".join(kwargs.pop('nodelist'))
-        kwargs['additional_parameters'] = additional
-        del kwargs['gpus']
-        del kwargs['mem_per_gpu']
-        del kwargs['cpus_per_gpu']
-        del kwargs['one_task_per_node']
-        del kwargs['dependents']
+        if kwargs.get("nodelist") is not None:
+            additional["nodelist"] = ",".join(kwargs.pop("nodelist"))
+        kwargs["additional_parameters"] = additional
+        del kwargs["gpus"]
+        del kwargs["mem_per_gpu"]
+        del kwargs["cpus_per_gpu"]
+        del kwargs["one_task_per_node"]
+        del kwargs["dependents"]
         logger.debug("Slurm parameters %r", kwargs)
 
-        executor.update_parameters(
-            job_name=name,
-            stderr_to_stdout=True,
-            **kwargs)
+        executor.update_parameters(job_name=name, stderr_to_stdout=True, **kwargs)
         return executor
 
     def _check_orphans(self):
         """Check for orphaned jobs."""
         for dirty in self._orphans.iterdir():
             name = dirty.name
-            logger.warning(f"Found dirty tag {name}, meaning a job might have been scheduled "
-                           "but Dora or Slurm crashed before the job id was saved.")
-            proc = sp.run(["squeue", "-u", os.getlogin(), "-n", name, "-o", "%i", "-h"],
-                          capture_output=True, check=True)
-            ids = [line.split('_')[0] for line in proc.stdout.decode().strip().split("\n") if line]
+            logger.warning(
+                f"Found dirty tag {name}, meaning a job might have been scheduled "
+                "but Dora or Slurm crashed before the job id was saved."
+            )
+            proc = sp.run(
+                ["squeue", "-u", os.getlogin(), "-n", name, "-o", "%i", "-h"],
+                capture_output=True,
+                check=True,
+            )
+            ids = [line.split("_")[0] for line in proc.stdout.decode().strip().split("\n") if line]
             if ids:
                 logger.warning(f"Found orphan job ids {ids}, will cancel")
                 sp.run(["scancel"] + ids, check=True)
@@ -462,12 +524,18 @@ class Shepherd:
         if not sheeps:
             return
 
+        # Validate serialization before submitting anything. Each successful launch
+        # replaces this snapshot; failed submissions leave the previous one intact.
+        saved_slurm = jsonable(asdict(slurm_config))
+        slurm_json = json.dumps(saved_slurm, indent=2) + "\n"
+
         is_array = len(sheeps) > 1
         first = sheeps[0]
         self.main.init_xp(first.xp)
         use_git_save = first.xp.dora.git_save
-        assert all(other.xp.dora.git_save == use_git_save for other in sheeps), \
-            "All jobs inside an array must have the same value for git_save."""
+        assert all(other.xp.dora.git_save == use_git_save for other in sheeps), (
+            "All jobs inside an array must have the same value for git_save."
+        )
 
         requeue = True
         if slurm_config.dependents:
@@ -497,7 +565,7 @@ class Shepherd:
         main_pickled = pickle.dumps(self.main)
         if self.main.dora.local_code:
             assert use_git_save, "Cannot use local_code without git_save !"
-        jobs: tp.List[submitit.Job] = []
+        jobs: list[submitit.Job] = []
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
         with self._enter_orphan(name), ExitStack() as stack:
@@ -512,8 +580,12 @@ class Shepherd:
                     if use_git_save:
                         assert self._existing_git_clone is not None
                         git_save.assign_clone(sheep.xp, self._existing_git_clone)
-                    submitit_args = [main_pickled, sheep.xp.argv,
-                                     requeue, self.main.dora.local_code]
+                    submitit_args = [
+                        main_pickled,
+                        sheep.xp.argv,
+                        requeue,
+                        self.main.dora.local_code,
+                    ]
                     jobs.append(executor.submit(_SubmitItTarget(), *submitit_args))
                     if slurm_config.dependents:
                         assert len(job_array.sheeps) == 1
@@ -521,7 +593,8 @@ class Shepherd:
                             requeue = dep_index == slurm_config.dependents - 1
                             last_job_id = jobs[-1].job_id
                             executor.update_parameters(
-                                additional_parameters={'dependency': f"afternotok:{last_job_id}"})
+                                additional_parameters={"dependency": f"afternotok:{last_job_id}"}
+                            )
                             jobs.append(executor.submit(_SubmitItTarget(), *submitit_args))
             dependent_jobs = []
             if slurm_config.dependents:
@@ -531,34 +604,32 @@ class Shepherd:
             # Now we can access jobs
             for sheep, job in zip(sheeps, jobs):
                 job_info_for_json = {
-                    'job_id': job.job_id,
-                    'array_job_ids': [other_job.job_id for other_job in jobs],
-                    'dependent_job_ids': [other_job.job_id for other_job in dependent_jobs],
-                    'slurm_config': asdict(slurm_config),
-
+                    "job_id": job.job_id,
+                    "array_job_ids": [other_job.job_id for other_job in jobs],
+                    "dependent_job_ids": [other_job.job_id for other_job in dependent_jobs],
+                    "slurm_config": saved_slurm,
                 }
-                sheep._json_job_file.write_text(json.dumps(job_info_for_json))
+                with write_and_rename(sheep.xp.folder / "slurm.json", "w") as file:
+                    file.write(slurm_json)
+                with write_and_rename(sheep._json_job_file, "w") as file:
+                    json.dump(job_info_for_json, file)
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
-                pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
+                with open(sheep._job_file, "wb") as file:
+                    pickle.dump((job, jobs, dependent_jobs), file)
                 logger.debug("Created job with id %s", job.job_id)
                 sheep.job = job  # type: ignore
                 sheep._other_jobs = jobs  # type: ignore
                 sheep._dependent_jobs = dependent_jobs  # type: ignore
-                link = self._by_id / job.job_id
-                link = link
-                link.symlink_to(sheep.xp.folder.resolve())
+                relink(self._by_id / job.job_id, sheep.xp.folder.resolve())
                 if is_array:
                     # We link the array submitit folder to be sure
                     # we keep an history of all arrays the XP was in.
-                    submitit_link = (sheep.xp.folder / submitit_folder.name)
+                    submitit_link = sheep.xp.folder / submitit_folder.name
                     if submitit_link.exists():
                         assert submitit_link.resolve() == submitit_folder.resolve()
                     else:
                         submitit_link.symlink_to(submitit_folder)
-                latest = sheep.xp._latest_submitit
-                if latest.exists():
-                    latest.unlink()
-                latest.symlink_to(submitit_folder)
+                relink(sheep.xp._latest_submitit, submitit_folder)
 
                 name = self.main.get_name(sheep.xp)
                 self.log(f"Scheduled job {job.job_id} for sheep {sheep.xp.sig}/{name}")

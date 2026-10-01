@@ -6,8 +6,8 @@
 
 import os
 import pickle
-import subprocess as sp
 import shutil
+import subprocess as sp
 
 import pytest
 
@@ -19,7 +19,7 @@ def run_cmd(argv, **kwargs):
 
 
 def test_integration(tmpdir):
-    os.environ['_DORA_TEST_TMPDIR'] = str(tmpdir)
+    os.environ["_DORA_TEST_TMPDIR"] = str(tmpdir)
     with pytest.raises(sp.SubprocessError):
         run_cmd(["info", "--", "a=32"])
     run_cmd(["info"])
@@ -29,7 +29,7 @@ def test_integration(tmpdir):
     run_cmd(["--main_module", "other_train", "run"])
 
     main = get_main(tmpdir)
-    xp = main.get_xp(['--b=4'])
+    xp = main.get_xp(["--b=4"])
     proc = run_cmd(["export", xp.sig], capture_output=True)
     shutil.rmtree(xp.folder)
     assert not xp.folder.exists()
@@ -38,8 +38,8 @@ def test_integration(tmpdir):
 
 
 def test_git_save(tmpdir):
-    os.environ['_DORA_TEST_TMPDIR'] = str(tmpdir)
-    os.environ['_DORA_GIT_SAVE'] = '1'
+    os.environ["_DORA_TEST_TMPDIR"] = str(tmpdir)
+    os.environ["_DORA_GIT_SAVE"] = "1"
     try:
         main = get_main(tmpdir)
         xp = main.get_xp([])
@@ -48,20 +48,20 @@ def test_git_save(tmpdir):
         run_cmd(["run"])
         assert not code.exists()
 
-        run_cmd(["run", '--git_save'])
+        run_cmd(["run", "--git_save"])
         assert code.exists()
         # Testing a second time, to make sure updating an existing repo works fine.
-        run_cmd(["run", '--git_save'])
+        run_cmd(["run", "--git_save"])
     finally:
-        os.environ['_DORA_GIT_SAVE'] = '0'
+        os.environ["_DORA_GIT_SAVE"] = "0"
 
     code.unlink()
-    run_cmd(["run", '--git_save'])
+    run_cmd(["run", "--git_save"])
     assert code.exists()
 
 
 def test_pickle(tmpdir):
-    os.environ['_DORA_TEST_TMPDIR'] = str(tmpdir)
+    os.environ["_DORA_TEST_TMPDIR"] = str(tmpdir)
     from .integ.train import main
 
     main._full_name = "dora.tests.integ.train.main"

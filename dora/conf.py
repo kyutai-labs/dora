@@ -7,19 +7,21 @@
 """
 Basic configuration for Dora is here.
 """
+
+from __future__ import annotations
+
+import typing as tp
 from argparse import Namespace
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-import typing as tp
 
-from omegaconf.dictconfig import DictConfig
-from omegaconf import OmegaConf
+if tp.TYPE_CHECKING:
+    from omegaconf.dictconfig import DictConfig
 
 
 def update_from_args(data: tp.Any, args: Namespace):
-    """Update the given dataclass from the argument parser args.
-    """
+    """Update the given dataclass from the argument parser args."""
     for key in data.__dict__:
         assert isinstance(key, str)
         if hasattr(args, key):
@@ -29,8 +31,8 @@ def update_from_args(data: tp.Any, args: Namespace):
 
 
 def update_from_hydra(data: tp.Any, cfg: DictConfig):
-    """Update the given dataclass from the hydra config.
-    """
+    """Update the given dataclass from the hydra config."""
+    from omegaconf import OmegaConf
 
     dct = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(dct, dict)
@@ -39,8 +41,9 @@ def update_from_hydra(data: tp.Any, cfg: DictConfig):
         if hasattr(data, key):
             setattr(data, key, value)
         else:
-            raise AttributeError(f"Object of type {data.__class__} "
-                                 f"does not have an attribute {key}")
+            raise AttributeError(
+                f"Object of type {data.__class__} does not have an attribute {key}"
+            )
 
 
 @dataclass
@@ -83,26 +86,27 @@ class SlurmConfig:
         Set `one_task_per_node` if you do not want that.
         Tasks without any gpus are not really supported at the moment.
     """
+
     gpus: int = 1
     mem_per_gpu: float = 40
     time: int = 1200
     cpus_per_gpu: int = 10
-    cpus_per_task: tp.Optional[int] = None
+    cpus_per_task: int | None = None
     partition: str = "learnlab"
-    comment: tp.Optional[str] = None
-    setup: tp.List[str] = field(default_factory=list)
+    comment: str | None = None
+    setup: list[str] = field(default_factory=list)
     max_num_timeout: int = 20
     constraint: str = ""
     one_task_per_node: bool = False
     array_parallelism: int = 256
-    exclude: tp.Optional[str] = None
-    qos: tp.Optional[str] = None
-    account: tp.Optional[str] = None
+    exclude: str | None = None
+    qos: str | None = None
+    account: str | None = None
     dependents: int = 0
     container_chdir: bool = False
-    force_chdir: tp.Optional[bool] = None
-    srun_args: tp.List[str] = field(default_factory=list)
-    python: tp.Optional[str] = None
+    force_chdir: bool | None = None
+    srun_args: list[str] = field(default_factory=list)
+    python: str | None = None
     nodelist: list[str] | None = None
 
 
@@ -133,6 +137,7 @@ class ShepConfig:
     Configuration for Shepherd. Mostly naming conventions for folders and files.
     There should be little reasons to change that.
     """
+
     job_file: str = "job.pkl"
     json_job_file: str = "job.json"
     by_id: str = "by_id"
@@ -164,13 +169,17 @@ class DoraConfig:
         grid_package (str or None): if provided, package to look for grids. Default
             to the package with the `train.py` module followed by `.grids`.
     """
+
     dir: Path = Path("./outputs")  # where everything will be stored
-    exclude: tp.List[str] = field(default_factory=list)
+    exclude: list[str] = field(default_factory=list)
     git_save: bool = False
-    post_git_save_commands: tp.List[str] = field(default_factory=list)
+    post_git_save_commands: list[str] = field(default_factory=list)
     local_code: bool = False
-    shared: tp.Optional[Path] = None  # Optional path for shared XPs.
-    grid_package: tp.Optional[str] = None
+    shared: Path | None = None  # Optional path for shared XPs.
+    grid_package: str | None = None
+
+    # Maximum name-column width in human-readable CLI output.
+    name_width: int = 100
 
     # Those are internal config values and are unlikely to be changed
     history: str = "history.json"  # where metrics will be stored
@@ -192,8 +201,11 @@ class DoraConfig:
         return False
 
     def __setattr__(self, name, value):
-        if name in ['dir', 'shared']:
+        if name == "name_width" and (type(value) is not int or value < 1):
+            raise ValueError("name_width must be a positive integer")
+        if name in ["dir", "shared"]:
             from .git_save import to_absolute_path
+
             if value is not None:
                 value = Path(to_absolute_path(value))
         super().__setattr__(name, value)

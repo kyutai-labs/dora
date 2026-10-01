@@ -13,44 +13,51 @@ and can be called repeatidly to schedule XPs.
 `Explorer`: defines some metadata, in particular the metrics to display
 with the `dora grid` command.
 """
-from collections import OrderedDict
-from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor, Future
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-import typing as tp
 
-from treetable.table import _Node
-import treetable as tt
+from __future__ import annotations
+
+import typing as tp
+from collections import OrderedDict
+from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import dataclass, field
+
+if tp.TYPE_CHECKING:
+    from treetable.table import _Node
 
 from .conf import SlurmConfig
-from .shep import Shepherd, Sheep
+from .shep import Sheep, Shepherd
 
 
 class ProcessException(RuntimeError):
     pass
 
 
-def _process(shepherd: Shepherd, argv: tp.List[str], slurm: SlurmConfig,
-             job_array_index: tp.Optional[int] = None):
+def _process(
+    shepherd: Shepherd,
+    argv: list[str],
+    slurm: SlurmConfig,
+    job_array_index: int | None = None,
+):
     try:
         return (shepherd.get_sheep_from_argv(argv), slurm, job_array_index)
     except Exception as exc:
-        raise ProcessException(repr(exc))
+        raise ProcessException(repr(exc)) from exc
 
 
 @dataclass
 class Herd:
-    """Represents a herd of sheeps ready to be scheduled.
-    """
-    sheeps: tp.Dict[str, Sheep] = field(default_factory=OrderedDict)
-    slurm_configs: tp.Dict[str, SlurmConfig] = field(default_factory=dict)
-    job_arrays: tp.List[tp.List[str]] = field(default_factory=list)
+    """Represents a herd of sheeps ready to be scheduled."""
+
+    sheeps: dict[str, Sheep] = field(default_factory=OrderedDict)
+    slurm_configs: dict[str, SlurmConfig] = field(default_factory=dict)
+    job_arrays: list[list[str]] = field(default_factory=list)
 
     # Sheeps that need to be evaluated in a process pool for faster execution.
-    _pendings: tp.List[Future] = field(default_factory=list)
+    _pendings: list[Future] = field(default_factory=list)
 
-    _job_array_launcher: tp.Optional["Launcher"] = None
+    _job_array_launcher: Launcher | None = None
 
     def complete(self):
         """Complete all pending sheep evaluations and add them to the herd."""
@@ -59,8 +66,13 @@ class Herd:
             sheep, slurm, job_array_index = future.result()
             self._add_sheep(sheep, slurm, job_array_index)
 
-    def add_sheep(self, shepherd: Shepherd, argv: tp.List[str], slurm: SlurmConfig,
-                  pool: tp.Optional[ProcessPoolExecutor] = None):
+    def add_sheep(
+        self,
+        shepherd: Shepherd,
+        argv: list[str],
+        slurm: SlurmConfig,
+        pool: ProcessPoolExecutor | None = None,
+    ):
         if self._job_array_launcher is None:
             self.job_arrays.append([])
         job_array_index = len(self.job_arrays) - 1
@@ -69,8 +81,7 @@ class Herd:
         else:
             self._pendings.append(pool.submit(_process, shepherd, argv, slurm, job_array_index))
 
-    def _add_sheep(self, sheep: Sheep, slurm: SlurmConfig,
-                   job_array_index: tp.Optional[int] = None):
+    def _add_sheep(self, sheep: Sheep, slurm: SlurmConfig, job_array_index: int | None = None):
         if sheep.xp.sig in self.sheeps:
             return
         self.sheeps[sheep.xp.sig] = sheep
@@ -93,8 +104,14 @@ class Launcher:
     have the same effect as in `Launcher.bind()`.
     """
 
-    def __init__(self, shepherd: Shepherd, slurm: SlurmConfig, herd: Herd,
-                 argv: tp.List[str] = [], pool: tp.Optional[ProcessPoolExecutor] = None):
+    def __init__(
+        self,
+        shepherd: Shepherd,
+        slurm: SlurmConfig,
+        herd: Herd,
+        argv: tp.Sequence[str] = (),
+        pool: ProcessPoolExecutor | None = None,
+    ):
         self._shepherd = shepherd
         self._main = self._shepherd.main
         self._herd = herd
@@ -170,8 +187,9 @@ class Launcher:
         launcher = self.bind(*args, **kwargs)
         array_launcher = self._herd._job_array_launcher
         if array_launcher is not None:
-            assert array_launcher._slurm == launcher._slurm, \
+            assert array_launcher._slurm == launcher._slurm, (
                 "cannot change slurm config inside job array."
+            )
         self._herd.add_sheep(self._shepherd, launcher._argv, launcher._slurm, self._pool)
 
     @contextmanager
@@ -198,14 +216,14 @@ class Explorer:
     def __call__(self, launcher: Launcher):
         self.explore(launcher)
 
-    def get_grid_metrics(self) -> tp.List[_Node]:
-        """Return the metrics that should be displayed in the tracking table.
-        """
+    def get_grid_metrics(self) -> list[_Node]:
+        """Return the metrics that should be displayed in the tracking table."""
         return []
 
-    def get_grid_meta(self) -> tp.List[_Node]:
-        """Returns the list of Meta information to display for each XP/job.
-        """
+    def get_grid_meta(self) -> list[_Node]:
+        """Returns the list of Meta information to display for each XP/job."""
+        import treetable as tt
+
         return [
             tt.leaf("index", align=">"),
             tt.leaf("name"),
@@ -217,7 +235,7 @@ class Explorer:
     def get_colors(self):
         return ["0", "38;5;245"]
 
-    def process_sheep(self, sheep: Sheep, history: tp.List[dict]) -> dict:
+    def process_sheep(self, sheep: Sheep, history: list[dict]) -> dict:
         """Process a sheep to return a dict (with possibly nested dict inside)
         matching the schema given by `get_grid_metrics`.
         This gives more possiblities than `process_history`, which is kept for compatibility,
@@ -229,13 +247,11 @@ class Explorer:
         """
         raise NotImplementedError()
 
-    def process_history(self, history: tp.List[dict]) -> dict:
+    def process_history(self, history: list[dict]) -> dict:
         """Process history to return a dict (with possibly nested dict inside)
         matching the schema given by `get_grid_metrics`.
         """
-        out = {
-            'epoch': len(history)
-        }
+        out = {"epoch": len(history)}
         for metrics in history:
             out.update(metrics)
         return out

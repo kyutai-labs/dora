@@ -8,17 +8,16 @@
 Allow to export and import XP hyper-params using base64 encoded string.
 This allows easy sharing through paste, mails etc.
 """
+
 import base64
-from functools import partial
 import json
 import sys
 import textwrap
-import typing as tp
 import zlib
+from functools import partial
 
-
-from .main import DecoratedMain
 from .log import fatal, simple_log
+from .main import DecoratedMain
 
 log = partial(simple_log, "Export:")
 
@@ -30,7 +29,7 @@ def dump(value):
 
 
 def load(b64):
-    b64 = "".join([line.strip() for line in b64.split('\n')])
+    b64 = "".join([line.strip() for line in b64.split("\n")])
     bits = base64.b64decode(b64)
     jsoned = zlib.decompress(bits)
     return json.loads(jsoned.decode())
@@ -51,7 +50,7 @@ def export_action(args, main: DecoratedMain):
 
 
 def import_action(args, main: DecoratedMain):
-    buffer: tp.List[str] = []
+    buffer: list[str] = []
     for line in sys.stdin:
         line = line.strip()
         if not line and buffer:

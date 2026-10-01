@@ -4,19 +4,20 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from contextlib import contextmanager
 import importlib.util
 import logging
 import os
 import shlex
 import subprocess as sp
+import sys
 import typing as tp
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
-from .main import DecoratedMain
 from .log import fatal
+from .main import DecoratedMain
 from .xp import XP
-
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +26,21 @@ class CommandError(Exception):
     pass
 
 
-def run_command(command, **kwargs):
-    proc = sp.run(command, stdout=sp.PIPE, stderr=sp.STDOUT, **kwargs)
+def run_command(command, *, check=False, **kwargs):
+    proc = sp.run(command, stdout=sp.PIPE, stderr=sp.STDOUT, check=check, **kwargs)
     if proc.returncode:
         if isinstance(command, str):
             command_str = command
         else:
             command_str = " ".join(shlex.quote(c) for c in command)
         raise CommandError(
-            f"Command {command_str} failed ({proc.returncode}): \n" + proc.stdout.decode())
+            f"Command {command_str} failed ({proc.returncode}): \n" + proc.stdout.decode()
+        )
     return proc.stdout.decode().strip()
 
 
 def check_repo_clean(root: Path, main: DecoratedMain):
-    out = run_command(['git', 'status', '--porcelain'])
+    out = run_command(["git", "status", "--porcelain"])
     filtered = []
     # Here we try to detect the grids package and allow uncommitted changes
     # only to that folder. The rational is that as we edit the grid file, it is a pain
@@ -47,7 +49,7 @@ def check_repo_clean(root: Path, main: DecoratedMain):
     if grid_name is None:
         grid_name = main.package + ".grids"
     spec = importlib.util.find_spec(grid_name)
-    grid_path: tp.Optional[Path] = None
+    grid_path: Path | None = None
     if spec is not None:
         assert spec.origin is not None
         grid_path = Path(spec.origin).resolve().parent
@@ -55,14 +57,14 @@ def check_repo_clean(root: Path, main: DecoratedMain):
         if not line:
             continue
         parts = shlex.split(line)
-        paths: tp.List[str] = []
+        paths: list[str] = []
         if len(parts) == 2:
             paths.append(parts[1])
         elif len(parts) == 4:
             assert parts[3] == "->"
             paths += [parts[1], parts[2]]
         else:
-            assert "Invalid parts", parts
+            raise AssertionError(f"Invalid git status entry: {parts!r}")
         line_clean = True
         for path in paths:
             if grid_path is None:
@@ -76,22 +78,24 @@ def check_repo_clean(root: Path, main: DecoratedMain):
         if not line_clean:
             filtered.append(line)
     if filtered:
-        files = '\n'.join(filtered)
-        fatal("Repository is not clean! The following files should be commited "
-              f"or git ignored: \n {files}")
+        files = "\n".join(filtered)
+        fatal(
+            "Repository is not clean! The following files should be commited "
+            f"or git ignored: \n {files}"
+        )
 
 
 def get_git_root():
-    return Path(run_command(['git', 'rev-parse', '--show-toplevel'])).resolve()
+    return Path(run_command(["git", "rev-parse", "--show-toplevel"])).resolve()
 
 
-def get_git_commit(repo: Path = Path('.')):
-    return run_command(['git', 'log', '-1', '--format=%H'], cwd=repo)
+def get_git_commit(repo: Path = Path(".")):
+    return run_command(["git", "log", "-1", "--format=%H"], cwd=repo)
 
 
 def shallow_clone(source: Path, target: Path):
     tmp_target = target.parent / (target.name + ".tmp")
-    run_command(['git', 'clone', '--depth=1', 'file://' + str(source), str(tmp_target)])
+    run_command(["git", "clone", "--depth=1", "file://" + str(source), str(tmp_target)])
     # We are not sure that there wasn't a new commit in between, so to make
     # sure the folder name is correct, we clone to a temporary name, then rename to the
     # actual commit in there. It seems there is no easy way to directly make a shallow
@@ -122,9 +126,10 @@ def get_new_clone(main: DecoratedMain) -> Path:
     elif main.dora.local_code:
         if not tar_file.exists():
             raise RuntimeError(
-                f'Repository clone {target} already exists, but tar file {tar_file} does not. '
-                'This could happen if you interrupted a previous dora command before it completed. '
-                'To resolve the issue, please delete {target} and retry.')
+                f"Repository clone {target} already exists, but tar file {tar_file} does not. "
+                "This could happen if you interrupted a previous dora command before it completed. "
+                "To resolve the issue, please delete {target} and retry."
+            )
     assert target.exists()
     return target
 
@@ -134,17 +139,17 @@ def enter_clone(clone: Path):
     """Context manager that temporarily relocates to a clean clone of the
     current git repository.
     """
-    cwd = Path('.').resolve()
+    cwd = Path.cwd()
     root = get_git_root()
     relative_path = cwd.relative_to(root)
 
-    os.environ['_DORA_ORIGINAL_DIR'] = str(cwd)
+    os.environ["_DORA_ORIGINAL_DIR"] = str(cwd)
     os.chdir(clone / relative_path)
     try:
         yield
     finally:
         os.chdir(cwd)
-        del os.environ['_DORA_ORIGINAL_DIR']
+        del os.environ["_DORA_ORIGINAL_DIR"]
 
 
 def assign_clone(xp: XP, clone: Path):
@@ -154,10 +159,27 @@ def assign_clone(xp: XP, clone: Path):
         if code.is_symlink():
             code.unlink()
         elif code.is_dir():
-            code.rename(code.parent / 'old_code')
+            code.rename(code.parent / "old_code")
         else:
-            assert "code folder should be symlink or folder", code
+            raise AssertionError(f"code folder should be symlink or folder: {code}")
     code.symlink_to(clone)
+
+
+_run_cwd: ContextVar[Path | None] = ContextVar("dora_run_cwd", default=None)
+
+
+@contextmanager
+def enter_run_dir(folder: Path | None):
+    """Keep relative user paths anchored while the fast backend runs an XP."""
+    cwd = Path.cwd()
+    token = _run_cwd.set(cwd)
+    try:
+        if folder is not None:
+            os.chdir(folder)
+        yield
+    finally:
+        os.chdir(cwd)
+        _run_cwd.reset(token)
 
 
 AnyPath = tp.TypeVar("AnyPath", str, Path)
@@ -178,20 +200,28 @@ def to_absolute_path(path: AnyPath) -> AnyPath:
     """
     klass = type(path)
     _path = Path(path)
-    if '_DORA_ORIGINAL_DIR' not in os.environ:
+    if "_DORA_ORIGINAL_DIR" not in os.environ:
         # We did not use git_save, we check first if Hydra is used,
         # in which case we use it to convert to an absolute Path.
-        try:
-            import hydra.utils
-        except ImportError:
+        # Looked up rather than imported: Hydra's version only differs from
+        # plain cwd resolution once Hydra is running and has moved the working
+        # directory, and it cannot be running if it was never imported. This
+        # matters because `DoraConfig.__setattr__` calls this on every `dir`
+        # assignment, so importing Hydra here would put it back on the path of
+        # anything that merely constructs a config.
+        run_cwd = _run_cwd.get()
+        if run_cwd is not None:
+            return klass(_path if _path.is_absolute() else run_cwd / _path)
+        hydra_utils = sys.modules.get("hydra.utils")
+        if hydra_utils is None:
             if not _path.is_absolute():
                 _path = Path(os.getcwd()) / _path
         else:
-            _path = Path(hydra.utils.to_absolute_path(str(_path)))
+            _path = Path(hydra_utils.to_absolute_path(str(_path)))
         return klass(_path)
     else:
         # We used git_save, in which case we used the original dir saved by Dora.
-        original_cwd = Path(os.environ['_DORA_ORIGINAL_DIR'])
+        original_cwd = Path(os.environ["_DORA_ORIGINAL_DIR"])
         if _path.is_absolute():
             return klass(_path)
         else:

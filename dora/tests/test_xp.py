@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 from pathlib import Path
-import torch
 
 import pytest
+import torch
 
 from ..conf import DoraConfig
 from ..xp import XP
@@ -22,9 +22,9 @@ def get_dora(tmpdir: Path):
 
 
 def test_dora_dir_abs():
-    dora = get_dora('outputs')
+    dora = get_dora("outputs")
     assert dora.dir.is_absolute()
-    dora.dir = 'plop'
+    dora.dir = "plop"
     assert dora.dir.is_absolute()
 
 
@@ -68,7 +68,7 @@ def test_link(tmpdir):
 
     val = [{"plok": 43, "out": Path("plop"), "mat": torch.zeros(5)}]
     xp.link.update_history(val)
-    assert xp.link.history == [{"plok": 43, "out": "plop", "mat": [0.] * 5}]
+    assert xp.link.history == [{"plok": 43, "out": "plop", "mat": [0.0] * 5}]
     with pytest.raises(ValueError):
         xp.link.update_history({"plop": 42})
 

@@ -57,22 +57,35 @@ width="400px"></p>
 
 
 """
-__pdoc__ = {}
-__pdoc__['tests'] = False
 
-__version__ = "0.1.13"
+__pdoc__ = {}
+__pdoc__["tests"] = False
+
+__version__ = "0.2.0a2"
 
 # flake8: noqa
 from .explore import Explorer, Launcher
-try:
-    import hydra
-except ImportError:
-    pass
-else:
-    from .hydra import hydra_main
 from . import conf, grid
 from .git_save import to_absolute_path
 from .link import Link
 from .main import argparse_main
 from .shep import Sheep
 from .xp import get_xp, is_xp, XP
+
+
+def __getattr__(name: str):
+    """Resolve `dora.hydra_main` on first access (PEP 562).
+
+    Importing `dora.hydra` eagerly used to cost ~1.7s: it imports Hydra, and
+    through `dora.distrib` it imported torch. Almost nothing that touches Dora
+    needs either -- reading experiment metadata certainly does not -- so the
+    Hydra entry point is now resolved only when someone actually asks for it.
+    Hydra itself is imported only after selecting the default backend; the
+    opt-in fast parser can use the same decorator without Hydra installed.
+    `import dora.hydra` and `from dora import hydra_main` both keep working.
+    """
+    if name == "hydra_main":
+        from .hydra import hydra_main
+
+        return hydra_main
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

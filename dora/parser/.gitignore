@@ -1,0 +1,3 @@
+# Generated benchmark inputs/results and binary profiles stay local.
+/*.json
+/omegaconf_profile/

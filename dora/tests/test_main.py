@@ -4,16 +4,15 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from argparse import ArgumentParser
-from pathlib import Path
 import os
 import sys
+from argparse import ArgumentParser
+from pathlib import Path
 
 import pytest
 
 from ..main import argparse_main
 from ..xp import XP, get_xp
-
 
 parser = ArgumentParser("test_main")
 parser.add_argument("--a", type=int)
@@ -27,13 +26,11 @@ EXCLUDE = ["num_workers", "cat_*"]
 
 
 def get_main(dora_dir, shared=None):
-    @argparse_main(
-        parser=parser, exclude=EXCLUDE, dir=dora_dir,
-        shared=shared, use_underscore=True)
+    @argparse_main(parser=parser, exclude=EXCLUDE, dir=dora_dir, shared=shared, use_underscore=True)
     def main():
         xp = get_xp()
-        cwd = str(Path('.').resolve())
-        code = str((xp.folder / 'code').resolve())
+        cwd = str(Path.cwd())
+        code = str((xp.folder / "code").resolve())
         if xp.dora.git_save:
             assert cwd.startswith(code), cwd
             assert __file__.startswith(code), __file__
@@ -43,7 +40,7 @@ def get_main(dora_dir, shared=None):
         xp.link.push_metrics({"loss": 0.1})
         return xp
 
-    if os.environ.get('_DORA_GIT_SAVE') == '1':
+    if os.environ.get("_DORA_GIT_SAVE") == "1":
         main.dora.git_save = True
     return main
 
@@ -58,12 +55,12 @@ def call(main, argv):
 
 
 def test_shared(tmpdir):
-    shared = tmpdir / 'shared'
-    main_a = get_main(tmpdir / 'a', shared)
-    main_b = get_main(tmpdir / 'b')
-    main_c = get_main(tmpdir / 'c', shared)
+    shared = tmpdir / "shared"
+    main_a = get_main(tmpdir / "a", shared)
+    main_b = get_main(tmpdir / "b")
+    main_c = get_main(tmpdir / "c", shared)
 
-    xp = main_a.get_xp(['--a=5'])
+    xp = main_a.get_xp(["--a=5"])
     main_a.init_xp(xp)
 
     with pytest.raises(RuntimeError):
