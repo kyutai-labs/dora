@@ -5,16 +5,16 @@
 # LICENSE file in the root directory of this source tree.
 # author: adefossez 2020
 
-from contextlib import contextmanager
 import importlib
 import logging
 import os
-from pathlib import Path
 import pickle
-from shutil import rmtree
 import sys
 import tempfile
 import typing as tp
+from contextlib import contextmanager
+from pathlib import Path
+from shutil import rmtree
 
 from .log import fatal
 
@@ -42,7 +42,7 @@ def jsonable(value):
     basecontainer = sys.modules.get("omegaconf.basecontainer")
     if basecontainer is not None and isinstance(value, basecontainer.BaseContainer):
         return sys.modules["omegaconf"].OmegaConf.to_container(value)
-    raise ValueError(f"{repr(value)} is not jsonable.")
+    raise ValueError(f"{value!r} is not jsonable.")
 
 
 @contextmanager

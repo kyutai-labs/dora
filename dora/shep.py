@@ -7,17 +7,18 @@
 """Scheduling and job monitoring utilities."""
 
 from __future__ import annotations
-from contextlib import contextmanager, ExitStack
-from dataclasses import dataclass, field, asdict
+
 import json
 import logging
-from pathlib import Path
-import pickle
 import os
+import pickle
 import subprocess as sp
 import sys
 import tempfile
 import typing as tp
+from contextlib import ExitStack, contextmanager
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 # submitit costs ~80ms to import and is only needed once we actually talk to
 # Slurm. With `from __future__ import annotations` every reference below is a
@@ -34,12 +35,11 @@ from .main import DecoratedMain
 from .utils import jsonable, try_load, write_and_rename
 from .xp import XP, _get_sig, get_xp
 
-
 logger = logging.getLogger(__name__)
 
 
 PreemptionCallback = tp.Callable[[], None]
-_preemption_callbacks: tp.List[PreemptionCallback] = []
+_preemption_callbacks: list[PreemptionCallback] = []
 
 
 def register_preemption_callaback(callback: PreemptionCallback):
@@ -61,7 +61,7 @@ class _SubmitItTarget:
         logger.info("CWD is %s", os.getcwd())
         with ExitStack() as stack:
             if local_code:
-                code_path = Path(".").resolve()
+                code_path = Path.cwd()
                 tar_path = code_path.parent / (code_path.name + ".tar")
                 if not tar_path.exists():
                     logger.critical("Could not find tar file %s to run the code locally", tar_path)
@@ -119,10 +119,10 @@ class Sheep:
 
     def __init__(self, xp: XP):
         self.xp = xp
-        self.job: tp.Optional[submitit.SlurmJob] = None
+        self.job: submitit.SlurmJob | None = None
         # Other jobs contain the list of other jobs in the array
-        self._other_jobs: tp.List[submitit.SlurmJob] = []
-        self._dependent_jobs: tp.List[submitit.SlurmJob] = []
+        self._other_jobs: list[submitit.SlurmJob] = []
+        self._dependent_jobs: list[submitit.SlurmJob] = []
         if self._job_file.exists():
             content = try_load(self._job_file)
             if isinstance(content, tuple):
@@ -144,17 +144,16 @@ class Sheep:
         return self.xp.folder / self.xp.dora.shep.json_job_file
 
     @staticmethod
-    def _get_state(job, other_jobs=[], mode="standard"):
+    def _get_state(job, other_jobs=(), mode="standard"):
         """Return the current state of the `Sheep`."""
         if job is None:
             return None
         state = job.watcher.get_state(job.job_id, mode)
-        if state == "UNKNOWN" and other_jobs:
-            if any(job.state != "UNKNOWN" for job in other_jobs):
-                # When cancelling single entries in a job array,
-                # sacct will just completely forget about it insted of marking
-                # it as cancelled. So we use a specific 'MISSING' status to handle that.
-                state = "MISSING"
+        if state == "UNKNOWN" and other_jobs and any(job.state != "UNKNOWN" for job in other_jobs):
+            # When cancelling single entries in a job array,
+            # sacct will just completely forget about it insted of marking
+            # it as cancelled. So we use a specific 'MISSING' status to handle that.
+            state = "MISSING"
         if state.startswith("CANCELLED"):
             return "CANCELLED"
         return state
@@ -199,7 +198,7 @@ class Sheep:
         return self.xp.submitit / f"{job_id}_0_log.out"
 
     @property
-    def current_job_id(self) -> tp.Optional[str]:
+    def current_job_id(self) -> str | None:
         """Return the current job id, especially useful when using dependent jobs."""
         if self.job is None:
             return None
@@ -242,13 +241,12 @@ def relink(link: Path, target: Path):
 
 def no_log(x: str):
     """No logging logging function, passed to `Shepherd`."""
-    pass
 
 
 @dataclass
 class _JobArray:
     slurm_config: SlurmConfig
-    sheeps: tp.List[Sheep] = field(default_factory=list)
+    sheeps: list[Sheep] = field(default_factory=list)
 
 
 class Shepherd:
@@ -283,9 +281,9 @@ class Shepherd:
         self.log = log
 
         self._in_job_array: bool = False
-        self._existing_git_clone: tp.Optional[Path] = None
-        self._to_cancel: tp.List[submitit.SlurmJob] = []
-        self._to_submit: tp.List[_JobArray] = []
+        self._existing_git_clone: Path | None = None
+        self._to_cancel: list[submitit.SlurmJob] = []
+        self._to_submit: list[_JobArray] = []
 
         if not read_only and check_orphans:
             # Cancels jobs left behind by a Dora that crashed mid-submit, so it
@@ -302,7 +300,7 @@ class Shepherd:
         xp = self.main.get_xp(argv)
         return Sheep(xp)
 
-    def get_sheep_from_sig(self, sig: str) -> tp.Optional[Sheep]:
+    def get_sheep_from_sig(self, sig: str) -> Sheep | None:
         """
         Returns a `Sheep` given the XP signature, if any exists, otherwise
         returns None.
@@ -310,7 +308,7 @@ class Shepherd:
         xp = self.main.get_xp_from_sig(sig)
         return Sheep(xp)
 
-    def get_sheep_from_job_id(self, job_id: str) -> tp.Optional[Sheep]:
+    def get_sheep_from_job_id(self, job_id: str) -> Sheep | None:
         """
         Returns the `Sheep` associated with the given `job_id`. If no sheep
         is found, returns None.
@@ -378,9 +376,9 @@ class Shepherd:
 
     def cancel_lazy(
         self,
-        job: tp.Optional[submitit.SlurmJob] = None,
+        job: submitit.SlurmJob | None = None,
         dependent_jobs: tp.Sequence[submitit.SlurmJob] = [],
-        sheep: tp.Optional[Sheep] = None,
+        sheep: Sheep | None = None,
     ):
         """
         Cancel a job. The job is actually cancelled only when `commit()` is called.
@@ -425,7 +423,7 @@ class Shepherd:
     def _arrays(self) -> Path:
         return self.main.dora.dir / self.main.dora.shep.arrays
 
-    def _cancel(self, jobs: tp.List[SlurmJob]):
+    def _cancel(self, jobs: list[SlurmJob]):
         cancel_cmd = ["scancel"] + [job.job_id for job in jobs]
         logger.debug("Running %s", " ".join(cancel_cmd))
         sp.run(cancel_cmd, check=True)
@@ -567,7 +565,7 @@ class Shepherd:
         main_pickled = pickle.dumps(self.main)
         if self.main.dora.local_code:
             assert use_git_save, "Cannot use local_code without git_save !"
-        jobs: tp.List[submitit.Job] = []
+        jobs: list[submitit.Job] = []
         if use_git_save and self._existing_git_clone is None:
             self._existing_git_clone = git_save.get_new_clone(self.main)
         with self._enter_orphan(name), ExitStack() as stack:
@@ -616,7 +614,8 @@ class Shepherd:
                 with write_and_rename(sheep._json_job_file, "w") as file:
                     json.dump(job_info_for_json, file)
                 # See commment in `Sheep.state` function above for storing all jobs in the array.
-                pickle.dump((job, jobs, dependent_jobs), open(sheep._job_file, "wb"))
+                with open(sheep._job_file, "wb") as file:
+                    pickle.dump((job, jobs, dependent_jobs), file)
                 logger.debug("Created job with id %s", job.job_id)
                 sheep.job = job  # type: ignore
                 sheep._other_jobs = jobs  # type: ignore

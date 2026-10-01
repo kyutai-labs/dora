@@ -6,9 +6,9 @@ from .overrides import Override, parse_override, parse_value
 __all__ = [
     "ConfigError",
     "ConfigParser",
+    "Override",
     "UnsupportedFeature",
     "compose",
-    "Override",
     "parse_override",
     "parse_value",
 ]

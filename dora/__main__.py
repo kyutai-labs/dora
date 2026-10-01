@@ -12,15 +12,15 @@ as doing local runs for debugging.
 
 import argparse
 
+from . import inspect as _inspect
+from ._utils import get_dora_config, get_main
 from .grid import grid_action
 from .info import info_action
-from . import inspect as _inspect
 from .launch import launch_action
 from .log import fatal, setup_logging, simple_log
 from .run import run_action
 from .running import running_action
-from .share import import_action, export_action
-from ._utils import get_dora_config, get_main
+from .share import export_action, import_action
 
 
 def add_submit_rules(parser):

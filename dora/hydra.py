@@ -9,13 +9,13 @@ This module provides support for Hydra, in particular the `main` wrapper between
 the end user `main` function and Hydra.
 """
 
-from collections import namedtuple, OrderedDict
-from importlib.util import find_spec
 import json
 import logging
-from pathlib import Path
 import sys
 import typing as tp
+from collections import OrderedDict, namedtuple
+from importlib.util import find_spec
+from pathlib import Path
 from unittest import mock
 
 from omegaconf.dictconfig import DictConfig
@@ -46,11 +46,13 @@ class _NotThere:
 NotThere = _NotThere()
 
 
-def _compare_config(ref, other, path=[]):
+def _compare_config(ref, other, path=None):
     """
     Given two configs, gives an iterator over all the differences. For each difference,
     this will give a _Difference namedtuple.
     """
+    if path is None:
+        path = []
     keys = sorted(ref.keys())
     remaining = sorted(set(other.keys()) - set(ref.keys()))
     delta = []
@@ -78,12 +80,12 @@ def _compare_config(ref, other, path=[]):
     return delta
 
 
-def _simplify_argv(argv: tp.Sequence[str]) -> tp.List[str]:
+def _simplify_argv(argv: tp.Sequence[str]) -> list[str]:
     simplified = []
     seen = set()
     for arg in list(argv)[::-1]:
         assert "=" in arg, f"Argument {arg} does not contain ="
-        key, value = arg.split("=", 1)
+        key, _value = arg.split("=", 1)
         key = key.strip()
         if key in seen:
             continue
@@ -217,7 +219,7 @@ class HydraMain(DecoratedMain):
         xp = XP(dora=self.dora, cfg=cfg, argv=argv, delta=delta)
         return xp
 
-    def value_to_argv(self, arg: tp.Any) -> tp.List[str]:
+    def value_to_argv(self, arg: tp.Any) -> list[str]:
         # Here we get the raw stuff from what is passed to the grid launcher.
         # arg is either a str (in which case it is a raw override)
         # or a dict, in which case each entry is an override,
@@ -236,7 +238,10 @@ class HydraMain(DecoratedMain):
             for part in arg:
                 argv += self.value_to_argv(part)
         else:
-            raise ValueError(f"Can only process dict, tuple, lists and str, but got {arg}")
+            # Preserve the existing ValueError validation API.
+            raise ValueError(  # noqa: TRY004
+                f"Can only process dict, tuple, lists and str, but got {arg}"
+            )
         return argv
 
     def _load_existing_cfg(self, xp: XP) -> tp.Any:
@@ -309,7 +314,7 @@ class HydraMain(DecoratedMain):
             # suites, notebooks -- and consumers have had to clear it themselves.
             GlobalHydra.instance().clear()
 
-    def _get_config_groups(self, fast: bool = True) -> tp.List[str]:
+    def _get_config_groups(self, fast: bool = True) -> list[str]:
         """List the Hydra config groups, used to tell `group=value` overrides
         from plain `dotted.key=value` ones.
 
@@ -341,7 +346,7 @@ class HydraMain(DecoratedMain):
             with mock.patch.object(DictConfig, "__deepcopy__", _no_copy):
                 return list(gh.list_all_config_groups())
 
-    def _is_active(self, argv: tp.List[str]) -> bool:
+    def _is_active(self, argv: list[str]) -> bool:
         if self.use_fast_parser:
             from .parser import UnsupportedFeature
 
@@ -352,21 +357,21 @@ class HydraMain(DecoratedMain):
                         "the fast parser accepts config overrides only"
                     )
             return True
-        if "-m" in argv or "--multirun" in argv:
-            return False
-        return True
+        return not ("-m" in argv or "--multirun" in argv)
 
     def _get_base_config(
-        self, overrides: tp.List[str] = []
-    ) -> tp.Tuple[DictConfig, tp.List[tp.Tuple[str, str]]]:
+        self, overrides: list[str] | None = None
+    ) -> tuple[DictConfig, list[tuple[str, str]]]:
         """
         Return base config based on composition, along with delta for the
         composition overrides.
         """
+        if overrides is None:
+            overrides = []
         if self.use_fast_parser:
             # Keep Dora's existing group delta semantics, including argument order.
             to_keep = []
-            delta: tp.List[tp.Tuple[str, str]] = []
+            delta: list[tuple[str, str]] = []
             for arg in overrides:
                 group, _, value = arg.partition("=")
                 if group in self._config_groups:
@@ -397,11 +402,13 @@ class HydraMain(DecoratedMain):
             cfg = self._get_config_noinit(to_keep)
             return cfg, delta
 
-    def _get_config(self, overrides: tp.List[str] = []) -> DictConfig:
+    def _get_config(self, overrides: list[str] | None = None) -> DictConfig:
         """
         Internal method, returns the config for the given override,
         but without the dora.sig field filled.
         """
+        if overrides is None:
+            overrides = []
         if self.use_fast_parser:
             return self._parser.compose_config(overrides)
         from hydra import initialize_config_dir
@@ -411,9 +418,11 @@ class HydraMain(DecoratedMain):
         ):
             return self._get_config_noinit(overrides)
 
-    def _get_config_noinit(self, overrides: tp.List[str] = []) -> DictConfig:
+    def _get_config_noinit(self, overrides: list[str] | None = None) -> DictConfig:
         from hydra import compose
 
+        if overrides is None:
+            overrides = []
         return compose(self.config_name, overrides)  # type: ignore
 
     def _get_delta(self, init: DictConfig, other: DictConfig):

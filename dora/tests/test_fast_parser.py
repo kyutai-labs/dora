@@ -2,14 +2,14 @@
 
 import json
 import logging
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
-from omegaconf import OmegaConf
 import pytest
+from omegaconf import OmegaConf
 
-from dora import hydra_main, to_absolute_path, get_xp
+from dora import get_xp, hydra_main, to_absolute_path
 from dora.parser import UnsupportedFeature
 
 
@@ -180,6 +180,7 @@ def test_real_cli_without_hydra(config):
     result = subprocess.run(
         [sys.executable, "-B", "-m", "dora", "run", "solver=big", "lr=0.2"],
         cwd=config,
+        check=False,
         text=True,
         capture_output=True,
     )

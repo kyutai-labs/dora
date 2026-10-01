@@ -3,9 +3,12 @@ import subprocess
 import sys
 
 import pytest
-from hydra import compose as hydra_compose, initialize_config_dir
+from hydra import compose as hydra_compose
+from hydra import initialize_config_dir
 from hydra.core.override_parser.overrides_parser import OverridesParser
+from hydra.errors import HydraException
 from omegaconf import OmegaConf
+from omegaconf.errors import ConfigAttributeError
 
 from dora.parser import ConfigError, ConfigParser, UnsupportedFeature, parse_override, parse_value
 
@@ -185,7 +188,7 @@ def test_composition_matches_hydra(config, overrides):
     assert_same(parser.compose(overrides), OmegaConf.to_container(expected, resolve=False))
     try:
         resolved = OmegaConf.to_container(expected, resolve=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- match the oracle exception type
         with pytest.raises(type(exc)):
             OmegaConf.to_container(parser.compose_config(overrides), resolve=True)
     else:
@@ -211,7 +214,8 @@ def test_composition_matches_hydra(config, overrides):
     ],
 )
 def test_rejects_invalid_compositions_like_hydra(config, overrides):
-    with pytest.raises(Exception):
+    # Invalid config-group value types raise plain ValueError in Hydra.
+    with pytest.raises((HydraException, ValueError)):
         oracle(config, overrides)
     with pytest.raises(ConfigError):
         ConfigParser(config).compose(overrides)
@@ -295,7 +299,7 @@ def test_lazy_interpolation_and_struct_mode(config):
     cfg = ConfigParser(config).compose_config()
     cfg.x = 7
     assert cfg.interpolated == 7
-    with pytest.raises(Exception):
+    with pytest.raises(ConfigAttributeError):
         cfg.typo = 1
     with pytest.raises(UnsupportedFeature):
         ConfigParser(config).compose(["alias.a=5"])

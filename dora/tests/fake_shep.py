@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from contextlib import contextmanager
-import typing as tp
 from unittest import mock
 
 import submitit
@@ -59,16 +58,18 @@ class FakeExecutor:
         yield
 
 
-def _fake_cancel(self, jobs: tp.List[FakeJob]):
+def _fake_cancel(self, jobs: list[FakeJob]):
     for job in jobs:
         job._state = "CANCELLED"
 
 
 @contextmanager
 def mock_shep():
-    with mock.patch.object(submitit, "SlurmExecutor", FakeExecutor):
-        with mock.patch.object(Shepherd, "_cancel", _fake_cancel):
-            try:
-                yield
-            finally:
-                FakeJob.watcher.jobs = {}
+    with (
+        mock.patch.object(submitit, "SlurmExecutor", FakeExecutor),
+        mock.patch.object(Shepherd, "_cancel", _fake_cancel),
+    ):
+        try:
+            yield
+        finally:
+            FakeJob.watcher.jobs = {}

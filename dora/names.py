@@ -4,9 +4,9 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import typing as tp
 from collections import OrderedDict
 from pathlib import Path
-import typing as tp
 
 from .xp import XP
 
@@ -43,7 +43,9 @@ class NamesMixin:
             return xp.sig
         return self.get_names([xp])[-1]
 
-    def _get_short_name(self, parts: OrderedDict, reference: dict = {}):
+    def _get_short_name(self, parts: OrderedDict, reference: dict | None = None):
+        if reference is None:
+            reference = {}
         out_parts = []
         for key, value in parts.items():
             if key not in reference:
@@ -51,7 +53,7 @@ class NamesMixin:
                 out_parts.append(part)
         return " ".join(out_parts)
 
-    def get_names(self, xps: tp.List[XP]) -> tp.Tuple[tp.List[str], str]:
+    def get_names(self, xps: list[XP]) -> tuple[list[str], str]:
         """Given list of XPs, return individual XP names + base name.
         The common part in all XPs are factored into the base name
         """

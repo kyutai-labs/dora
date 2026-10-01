@@ -10,16 +10,14 @@ This allows easy sharing through paste, mails etc.
 """
 
 import base64
-from functools import partial
 import json
 import sys
 import textwrap
-import typing as tp
 import zlib
+from functools import partial
 
-
-from .main import DecoratedMain
 from .log import fatal, simple_log
+from .main import DecoratedMain
 
 log = partial(simple_log, "Export:")
 
@@ -52,7 +50,7 @@ def export_action(args, main: DecoratedMain):
 
 
 def import_action(args, main: DecoratedMain):
-    buffer: tp.List[str] = []
+    buffer: list[str] = []
     for line in sys.stdin:
         line = line.strip()
         if not line and buffer:

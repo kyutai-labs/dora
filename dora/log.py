@@ -4,11 +4,11 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from collections.abc import Iterable, Sized
 import logging
 import sys
 import time
 import typing as tp
+from collections.abc import Iterable, Sized
 
 
 class LogProgress:
@@ -33,7 +33,7 @@ class LogProgress:
         updates: int = 5,
         min_interval: int = 1,
         time_per_it: bool = False,
-        total: tp.Optional[int] = None,
+        total: int | None = None,
         name: str = "LogProgress",
         level: int = logging.INFO,
     ):
@@ -67,18 +67,14 @@ class LogProgress:
         if self._will_log:
             self._log()
             self._will_log = False
-        try:
-            value = next(self._iterator)
-        except StopIteration:
-            raise
-        else:
-            self._index += 1
-            if self.updates > 0:
-                log_every = max(self.min_interval, self.total // self.updates)
-                # logging is delayed by 1 it, in order to have the metrics from update
-                if self._index >= 1 and self._index % log_every == 0:
-                    self._will_log = True
-            return value
+        value = next(self._iterator)
+        self._index += 1
+        if self.updates > 0:
+            log_every = max(self.min_interval, self.total // self.updates)
+            # logging is delayed by 1 it, in order to have the metrics from update
+            if self._index >= 1 and self._index % log_every == 0:
+                self._will_log = True
+        return value
 
     def _log(self):
         self._speed = (1 + self._index) / (time.time() - self._begin)

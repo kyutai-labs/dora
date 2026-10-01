@@ -1,13 +1,14 @@
 """Explicit actions on persisted experiments, without evaluating a grid."""
 
 import json
-from pathlib import Path
 import subprocess as sp
+from pathlib import Path
 from typing import Any
 
 from .conf import DoraConfig, SlurmConfig, SubmitRules
 from .inspect import (
     JOB_RE,
+    JSON,
     MAX_ROWS,
     cap,
     emit,
@@ -15,7 +16,6 @@ from .inspect import (
     note,
     output_mode,
     resolve_targets,
-    JSON,
 )
 from .shep import Sheep, Shepherd
 
@@ -65,11 +65,17 @@ def _job_ids(folder: Path, dora: DoraConfig) -> list[str]:
         return []
     job = _read(path)
     if not isinstance(job, dict):
-        raise ValueError(f"{path}: expected job metadata")
+        # Preserve the existing ValueError validation API.
+        raise ValueError(  # noqa: TRY004
+            f"{path}: expected job metadata"
+        )
     first = job.get("job_id")
     dependents = job.get("dependent_job_ids", [])
     if not isinstance(dependents, list):
-        raise ValueError(f"{path}: expected a list of dependent job ids")
+        # Preserve the existing ValueError validation API.
+        raise ValueError(  # noqa: TRY004
+            f"{path}: expected a list of dependent job ids"
+        )
     ids = ([first] if first is not None else []) + dependents
     if any(not isinstance(value, str) or not JOB_RE.fullmatch(value) for value in ids):
         raise ValueError(f"{path}: invalid Slurm job id")

@@ -6,9 +6,9 @@
 
 import pytest
 
-from .test_main import get_main
-from ..explore import Launcher, Explorer, Herd
+from ..explore import Explorer, Herd, Launcher
 from ..shep import Shepherd
+from .test_main import get_main
 
 
 def test_launcher(tmpdir):

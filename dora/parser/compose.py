@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import posixpath
+import re
 from collections import OrderedDict
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-import posixpath
-import re
-from typing import Any, Iterable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from omegaconf import DictConfig
@@ -172,7 +173,7 @@ class ConfigParser:
 
     def is_group(self, key):
         name = key.split("@", 1)[0]
-        if name == "hydra" or name.startswith("hydra/") or name.startswith("hydra."):
+        if name == "hydra" or name.startswith(("hydra/", "hydra.")):
             raise UnsupportedFeature("Hydra runtime configuration and plugins are not supported")
         return self._path(name).is_dir()
 
@@ -237,12 +238,12 @@ class ConfigParser:
     def _base(self, groups):
         cache_key = self.config_name, tuple(groups)
         cached = self._bases.get(cache_key)
-        if cached:
-            if not self.check_files or all(
-                self._stamp(p) == stamp for p, stamp in cached.dependencies.items()
-            ):
-                self._bases.move_to_end(cache_key)
-                return cached
+        if cached and (
+            not self.check_files
+            or all(self._stamp(p) == stamp for p, stamp in cached.dependencies.items())
+        ):
+            self._bases.move_to_end(cache_key)
+            return cached
         overrides = [parse_override(arg) for arg in groups]
         selections = {}
         deletes = {}

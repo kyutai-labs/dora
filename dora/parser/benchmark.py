@@ -6,21 +6,21 @@ Checkpoint existence is simulated both ways to cover every branch of this grid.
 
 import argparse
 import ast
-from datetime import datetime, timezone
-from hashlib import sha256
 import json
 import os
-from pathlib import Path, PurePosixPath
 import platform
 import re
 import statistics
 import subprocess
 import sys
 import tempfile
-from time import perf_counter
 import tomllib
-from types import SimpleNamespace
 import warnings
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path, PurePosixPath
+from time import perf_counter
+from types import SimpleNamespace
 
 from . import ConfigParser
 
@@ -158,7 +158,8 @@ def collect_grid(source, main, checkpoints):
     function.decorator_list = []
     module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
     namespace = {"train": SimpleNamespace(main=SimpleNamespace(get_xp=get_xp))}
-    exec(compile(module, "<captured Audium explorer>", "exec"), namespace)
+    # The benchmark executes trusted local source captured above.
+    exec(compile(module, "<captured Audium explorer>", "exec"), namespace)  # noqa: S102
     namespace["explorer"](Launcher())
     return rows
 
@@ -230,6 +231,7 @@ def audit_configs(config_dir):
     """Check all YAML documents and every single-solver choice in the snapshot."""
     from hydra import compose, initialize_config_dir
     from omegaconf import OmegaConf
+
     from .yaml_loader import load_yaml
 
     count = 0
@@ -245,12 +247,12 @@ def audit_configs(config_dir):
             arg = "solver=" + str(path.relative_to(config_dir / "solver").with_suffix(""))
             try:
                 expected = OmegaConf.to_container(compose("config", [arg]), resolve=False)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- compare all backend failures
                 hydra_rejected[arg] = type(exc).__name__ + ": " + str(exc).splitlines()[0]
                 continue
             try:
                 assert_equal(parser.compose([arg]), expected, arg)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- compare all backend failures
                 mismatches[arg] = str(exc)
             else:
                 matched.append(arg)
@@ -331,7 +333,7 @@ def run(audium, grid, repeat, cold_repeat, xp_root, audit_solvers=False):
                 flush=True,
             )
         return {
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "timestamp_utc": datetime.now(UTC).isoformat(),
             "source": str(audium),
             "grid": grid,
             "python": platform.python_version(),

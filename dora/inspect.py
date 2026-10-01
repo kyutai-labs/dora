@@ -22,17 +22,18 @@ Read-only invocations do not import the project when a `dora.toml` supplies the
 experiment directory -- see `dora.project`.
 """
 
-from collections import OrderedDict
-from dataclasses import dataclass, field
-from itertools import zip_longest
 import json
+import logging
 import os
-from pathlib import Path
 import re
 import subprocess as sp
 import sys
 import textwrap
 import typing as tp
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from itertools import zip_longest
+from pathlib import Path
 
 from .conf import DoraConfig
 from .names import NamesMixin
@@ -165,7 +166,7 @@ def elide_parts(name: str, width: int) -> str:
     if len(name) <= width:
         return name
     parts = name.split(" ")
-    kept: tp.List[str] = []
+    kept: list[str] = []
     used = 0
     for index, part in enumerate(parts):
         marker = f" +{len(parts) - index - 1}"
@@ -191,7 +192,7 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _visible_len(text))
 
 
-def get_name_width(dora: tp.Optional[DoraConfig] = None) -> int:
+def get_name_width(dora: DoraConfig | None = None) -> int:
     """The invoking repo's display preference, also usable outside a project."""
     from . import project
 
@@ -206,9 +207,7 @@ def format_name(name: str, mode: str, width: int = 100, compact_width: int = MAX
     return textwrap.fill(name, width=width, break_on_hyphens=False)
 
 
-def columns(
-    rows: tp.List[tp.List[str]], headers: tp.List[str], mode: str = COMPACT
-) -> tp.List[str]:
+def columns(rows: list[list[str]], headers: list[str], mode: str = COMPACT) -> list[str]:
     """Aligned columns, with multiline cells in human-readable output."""
     if not rows:
         return []
@@ -248,7 +247,7 @@ class _DeltaNamer(NamesMixin):
     signature. Signatures are never computed from this.
     """
 
-    def __init__(self, dora: tp.Optional[DoraConfig] = None):
+    def __init__(self, dora: DoraConfig | None = None):
         self.dora = dora
 
     def get_name_parts(self, xp: XP) -> OrderedDict:
@@ -270,19 +269,19 @@ class _DeltaNamer(NamesMixin):
 class Target:
     sig: str
     folder: Path
-    grid: tp.Optional[str] = None
+    grid: str | None = None
 
 
 @dataclass
 class Resolution:
-    targets: tp.List[Target] = field(default_factory=list)
-    problems: tp.List[str] = field(default_factory=list)
+    targets: list[Target] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
 
 
 def resolve_targets(
     tokens: tp.Sequence[str],
     dora: DoraConfig,
-    grid_module_exists: tp.Optional[tp.Callable[[str], bool]] = None,
+    grid_module_exists: tp.Callable[[str], bool] | None = None,
 ) -> Resolution:
     """Turn user-supplied tokens into experiments.
 
@@ -292,9 +291,9 @@ def resolve_targets(
     out = Resolution()
     xps_root = dora.dir / dora.xps
     grids_root = dora.dir / dora._grids
-    seen: tp.Set[str] = set()
+    seen: set[str] = set()
 
-    def add(sig: str, grid: tp.Optional[str] = None) -> None:
+    def add(sig: str, grid: str | None = None) -> None:
         if sig in seen:
             return
         seen.add(sig)
@@ -366,7 +365,7 @@ def read_json(path: Path, retries: int = 1) -> tp.Any:
     return None
 
 
-def job_states(job_ids: tp.Sequence[str]) -> tp.Dict[str, str]:
+def job_states(job_ids: tp.Sequence[str]) -> dict[str, str]:
     """Ask Slurm about every job at once.
 
     `-X` collapses the `.batch`/`.extern` steps, which would otherwise return
@@ -394,7 +393,7 @@ def job_states(job_ids: tp.Sequence[str]) -> tp.Dict[str, str]:
     return states
 
 
-def last_activity(folder: Path) -> tp.Optional[float]:
+def last_activity(folder: Path) -> float | None:
     """When this experiment last wrote anything, as a Unix timestamp."""
     newest = None
     for pattern in ("solver.log.*", "history.json", "train.log"):
@@ -411,9 +410,7 @@ def last_activity(folder: Path) -> tp.Optional[float]:
 # ---------------------------------------------------------------- history
 
 
-def flatten_history(
-    history: tp.List[dict], stage: tp.Optional[str] = None
-) -> tp.List[tp.Tuple[int, dict]]:
+def flatten_history(history: list[dict], stage: str | None = None) -> list[tuple[int, dict]]:
     """`[(epoch, metrics)]` for one stage, epochs 1-based as Dora counts them."""
     out = []
     for index, entry in enumerate(history, start=1):
@@ -431,18 +428,18 @@ def flatten_history(
     return out
 
 
-def pick_stage(history: tp.List[dict]) -> tp.Optional[str]:
+def pick_stage(history: list[dict]) -> str | None:
     """Prefer the stage a person would look at first."""
     present = {name for entry in history if isinstance(entry, dict) for name in entry}
     for candidate in ("valid", "train", "evaluate"):
         if candidate in present:
             return candidate
-    return sorted(present)[0] if present else None
+    return min(present) if present else None
 
 
 def summarise(
     folder: Path, keys: tp.Sequence[str] = (), prefixed: bool = False
-) -> tp.Tuple[int, dict]:
+) -> tuple[int, dict]:
     """Epoch count and last metrics, without loading more than needed.
 
     With `prefixed`, metrics from every stage are returned as `stage.metric`,
@@ -463,7 +460,7 @@ def summarise(
     return len(history), last
 
 
-def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
+def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> list[str]:
     """Pick the few metrics worth a column, when nothing better is known.
 
     This is the fallback for an experiment with no grid to ask (see
@@ -475,7 +472,7 @@ def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
     a real 74-metric experiment ended up showing `ce ce_q1 ce_q2 ce_q3`.
     """
     preferred = ("loss", "ce", "ppl", "nll", "acc", "wer", "reward", "grad_norm")
-    seen: tp.List[str] = []
+    seen: list[str] = []
     for sample in samples:
         for key in sample:
             if key not in seen:
@@ -487,8 +484,8 @@ def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
             len(k),
         ),
     )
-    chosen: tp.List[str] = []
-    families: tp.Set[str] = set()
+    chosen: list[str] = []
+    families: set[str] = set()
     for key in ranked:
         family = FAMILY_SUFFIX_RE.sub("", key)
         if family in families:
@@ -500,7 +497,7 @@ def choose_metric_keys(samples: tp.Sequence[dict], limit: int) -> tp.List[str]:
     return chosen
 
 
-def metric_spec_columns(explorer: tp.Any) -> tp.List[str]:
+def metric_spec_columns(explorer: tp.Any) -> list[str]:
     """The dotted metric names an Explorer displays, e.g. `train.loss`.
 
     `get_grid_metrics` returns treetable nodes: groups have children, leaves do
@@ -542,7 +539,7 @@ def save_metric_spec(grid_folder: Path, explorer: tp.Any) -> None:
         pass  # a cache; never worth failing a launch over
 
 
-def load_metric_spec(dora: DoraConfig, grid: tp.Optional[str]) -> tp.List[str]:
+def load_metric_spec(dora: DoraConfig, grid: str | None) -> list[str]:
     """The columns `dora grid` recorded for this grid, if any."""
     if not grid:
         return []
@@ -556,7 +553,7 @@ def load_metric_spec(dora: DoraConfig, grid: tp.Optional[str]) -> tp.List[str]:
 # ---------------------------------------------------------------- actions
 
 
-def _xp_names(dora: DoraConfig, targets: tp.List[Target]) -> tp.Tuple[tp.Dict[str, str], str]:
+def _xp_names(dora: DoraConfig, targets: list[Target]) -> tuple[dict[str, str], str]:
     """Short names for a set of experiments, plus the part they all share.
 
     Factoring the common overrides into a single header line is what keeps the
@@ -567,13 +564,14 @@ def _xp_names(dora: DoraConfig, targets: tp.List[Target]) -> tp.Tuple[tp.Dict[st
         try:
             xps.append(load_xp(dora, target.sig))
             sigs.append(target.sig)
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, RuntimeError) as exc:
+            logging.getLogger(__name__).debug("Cannot load experiment metadata: %s", exc)
             continue
     if not xps:
         return {}, ""
     try:
         names, base = _DeltaNamer(dora).get_names(xps)
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         return {sig: sig for sig in sigs}, ""
     return {sig: (name or sig) for sig, name in zip(sigs, names)}, base
 
@@ -675,7 +673,7 @@ def status_action(args: tp.Any, dora: DoraConfig) -> int:
     lines += columns(rows, headers, mode)
     if len(targets) > len(shown):
         lines.append(f"... {len(targets) - len(shown)} more (--limit)")
-    tally: tp.Dict[str, int] = {}
+    tally: dict[str, int] = {}
     for record in records:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
     lines.append(" | ".join(f"{state.lower()} {count}" for state, count in sorted(tally.items())))
@@ -755,9 +753,7 @@ def metrics_action(args: tp.Any, dora: DoraConfig) -> int:
 # ---------------------------------------------------------------- logs
 
 
-def log_files(
-    target: Target, rank: tp.Optional[int] = None, job_id: tp.Optional[str] = None
-) -> tp.List[Path]:
+def log_files(target: Target, rank: int | None = None, job_id: str | None = None) -> list[Path]:
     """Every log for an experiment, most recently written first.
 
     Dora runs submitit with `stderr_to_stdout`, so there are no `.err` files;
@@ -765,7 +761,7 @@ def log_files(
     array folder for array members, where the job id itself looks like `12_3`,
     so the files are found by globbing rather than by formatting a name.
     """
-    found: tp.List[Path] = []
+    found: list[Path] = []
     submitit = target.folder / "latest"
     if not submitit.exists():
         submitit = target.folder / "submitit"
@@ -783,9 +779,7 @@ def log_files(
 LOG_NAME_RE = re.compile(r"^(?P<job>\d+(?:_\d+)?)_(?P<task>\d+)_log\.out$")
 
 
-def log_attempts(
-    target: Target, current_job: tp.Optional[str] = None
-) -> tp.List[tp.Tuple[str, tp.List[Path]]]:
+def log_attempts(target: Target, current_job: str | None = None) -> list[tuple[str, list[Path]]]:
     """Group an experiment's logs by the job attempt that produced them.
 
     An experiment is usually run more than once -- requeued, resubmitted after a
@@ -803,7 +797,7 @@ def log_attempts(
     Returns `[(attempt, paths)]`, newest attempt first. `solver.log.*` are the
     current run's per-rank logs and are grouped under "solver".
     """
-    groups: tp.Dict[str, tp.List[Path]] = {}
+    groups: dict[str, list[Path]] = {}
     submitit = target.folder / "latest"
     if not submitit.exists():
         submitit = target.folder / "submitit"
@@ -818,7 +812,7 @@ def log_attempts(
     if train.is_file():
         groups.setdefault("train", []).append(train)
 
-    def newest(paths: tp.List[Path]) -> float:
+    def newest(paths: list[Path]) -> float:
         return max((p.stat().st_mtime for p in paths), default=0.0)
 
     ordered = sorted(groups.items(), key=lambda kv: newest(kv[1]), reverse=True)
@@ -847,7 +841,7 @@ def clean(line: str, mode: str = COMPACT) -> str:
     return line
 
 
-def tail(path: Path, count: int, mode: str = COMPACT) -> tp.List[str]:
+def tail(path: Path, count: int, mode: str = COMPACT) -> list[str]:
     """Last `count` lines, read from the end rather than through the file."""
     try:
         size = path.stat().st_size
@@ -900,20 +894,22 @@ def log_action(args: tp.Any, dora: DoraConfig) -> int:
 
 # Ordered by how specific the explanation is: a traceback says more than
 # "the step died", which says more than a Slurm exit code.
-FAILURE_PATTERNS: tp.List[tp.Tuple[str, str]] = [
+FAILURE_PATTERNS: list[tuple[str, str]] = [
     ("out of memory", r"torch\.OutOfMemoryError|CUDA out of memory|out of memory"),
     ("hydra config error", r"MissingConfigException|ConfigCompositionException"),
     ("NCCL / collective timeout", r"NCCL.*(timeout|error)|Watchdog caught|ProcessGroupNCCL"),
     ("could not start the job", r"execve\(\)|command not found|No such file or directory"),
     (
         "killed by Slurm",
-        r"DUE TO TIME LIMIT|CANCELLED AT|oom-kill|slurmstepd: error"
-        r"|srun: error",
+        (
+            r"DUE TO TIME LIMIT|CANCELLED AT|oom-kill|slurmstepd: error"
+            r"|srun: error"
+        ),
     ),
 ]
 
 
-def classify(lines: tp.Sequence[str]) -> tp.Optional[str]:
+def classify(lines: tp.Sequence[str]) -> str | None:
     for label, pattern in FAILURE_PATTERNS:
         expr = re.compile(pattern, re.IGNORECASE)
         if any(expr.search(line) for line in lines):
@@ -929,7 +925,7 @@ _CHAINED = (
 )
 
 
-def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
+def extract_traceback(lines: tp.Sequence[str]) -> list[str]:
     """The last Python traceback, bounded and compressed to its ends.
 
     Bounding matters more than it sounds. A traceback is followed by whatever
@@ -968,7 +964,7 @@ def extract_traceback(lines: tp.Sequence[str]) -> tp.List[str]:
     return block
 
 
-def exception_line(trace: tp.Sequence[str]) -> tp.Optional[str]:
+def exception_line(trace: tp.Sequence[str]) -> str | None:
     """The `SomeError: message` a traceback ends on, if it looks like one."""
     if not trace:
         return None
@@ -1002,8 +998,8 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     # Walk attempts newest first and stop at the first one that explains
     # something. An older failure is still the answer when the newest attempt
     # merely ran out of time or is still going.
-    culprit: tp.Optional[str] = None
-    findings: tp.List[dict] = []
+    culprit: str | None = None
+    findings: list[dict] = []
     scanned = 0
     for name, paths in attempts:
         if scanned >= args.attempts:
@@ -1057,7 +1053,7 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
     if not findings:
         lines.append("no known failure signature; last lines of the newest log:")
         for _, paths in attempts[:1]:
-            path = sorted(paths)[0]
+            path = min(paths)
             lines.append(f"[{path.name}]")
             lines += [ln for ln in tail(path, 12) if ln.strip()][-6:]
         if not attempts:
@@ -1074,7 +1070,7 @@ def why_action(args: tp.Any, dora: DoraConfig) -> int:
             + f", not the current job {current_job or '-'}"
         )
     # Ranks fail together, so report the cause once and count the rest.
-    seen: tp.Set[str] = set()
+    seen: set[str] = set()
     for finding in findings:
         body = "\n".join(finding["traceback"][-3:]) or str(finding["cause"])
         key = str(finding["cause"]) + re.sub(r"\d+", "#", body)
@@ -1112,7 +1108,7 @@ def render_grid(
     records = []
     for index, (sheep, name, line) in enumerate(zip(herd, names, lines)):
         meta = line.get("Meta", {})
-        metrics: tp.Dict[str, tp.Any] = {}
+        metrics: dict[str, tp.Any] = {}
         for group, values in line.items():
             if group == "Meta" or not isinstance(values, dict):
                 continue
@@ -1133,8 +1129,8 @@ def render_grid(
     # A stale experiment that is still running gets cancelled; one that already
     # finished is only dropped from the grid and keeps its results. Conflating
     # the two would make a harmless edit look alarming.
-    live_stale: tp.List[str] = []
-    done_stale: tp.List[str] = []
+    live_stale: list[str] = []
+    done_stale: list[str] = []
     for sheep in stale:
         (done_stale if sheep.is_done() else live_stale).append(sheep.xp.sig)
 
@@ -1173,7 +1169,7 @@ def render_grid(
     out += columns(rows, ["#", "sig", "name", "state", "job"] + metric_keys, mode)
     if len(records) > len(shown):
         out.append(f"... {len(records) - len(shown)} more (--limit)")
-    tally: tp.Dict[str, int] = {}
+    tally: dict[str, int] = {}
     for record in records:
         tally[record["state"]] = tally.get(record["state"], 0) + 1
     out.append(" | ".join(f"{state.lower()} {count}" for state, count in sorted(tally.items())))

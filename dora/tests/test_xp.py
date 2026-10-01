@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 from pathlib import Path
-import torch
 
 import pytest
+import torch
 
 from ..conf import DoraConfig
 from ..xp import XP

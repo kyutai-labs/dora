@@ -4,8 +4,9 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dora import Explorer
 import treetable as tt
+
+from dora import Explorer
 
 
 class MyExplorer(Explorer):

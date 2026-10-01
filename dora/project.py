@@ -36,11 +36,11 @@ unset rather than guessed at, and callers fall back to importing the project.
 The file is optional. Without it everything behaves as before, just slower.
 """
 
-from dataclasses import fields
 import os
-from pathlib import Path
 import re
 import typing as tp
+from dataclasses import fields
+from pathlib import Path
 
 from .conf import DoraConfig
 
@@ -84,7 +84,7 @@ def _interpolate(value: tp.Any) -> tp.Any:
     return _Unresolved(out) if missing else out
 
 
-def find_toml(start: tp.Optional[Path] = None) -> tp.Optional[Path]:
+def find_toml(start: Path | None = None) -> Path | None:
     """Look for a `dora.toml`, walking up from `start` (default: cwd).
 
     Walking up is deliberate: `dora` should work from a subdirectory of the
@@ -105,10 +105,10 @@ class ProjectConfig:
         self.path = path
         self.root = path.parent
         project = raw.get("project", {})
-        self.package: tp.Optional[str] = project.get("package")
-        self.main_module: tp.Optional[str] = project.get("main_module")
-        self.config_path: tp.Optional[str] = project.get("config_path")
-        self.config_name: tp.Optional[str] = project.get("config_name")
+        self.package: str | None = project.get("package")
+        self.main_module: str | None = project.get("main_module")
+        self.config_path: str | None = project.get("config_path")
+        self.config_name: str | None = project.get("config_name")
         self.use_fast_parser: bool = project.get("use_fast_parser", False)
         if not isinstance(self.use_fast_parser, bool):
             raise ProjectConfigError(
@@ -117,7 +117,7 @@ class ProjectConfig:
         self.hydra_kwargs: dict = project.get("hydra", {})
         self._dora: dict = raw.get("dora", {})
 
-    def dora_config(self, require_dir: bool = True) -> tp.Optional[DoraConfig]:
+    def dora_config(self, require_dir: bool = True) -> DoraConfig | None:
         """Build a `DoraConfig`, or None if there is no `[dora]` section.
 
         With `require_dir`, also returns None when the experiment directory
@@ -179,7 +179,7 @@ class ProjectConfig:
         return DoraConfig(**values)
 
 
-def load(start: tp.Optional[Path] = None) -> tp.Optional[ProjectConfig]:
+def load(start: Path | None = None) -> ProjectConfig | None:
     """Find and parse the nearest `dora.toml`, or None if there is none."""
     path = find_toml(start)
     if path is None:

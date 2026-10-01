@@ -1,20 +1,20 @@
 """Profile OmegaConf costs on the Audium grid without changing either library."""
 
 import argparse
-from collections import Counter
-from copy import deepcopy
 import cProfile
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import platform
 import pstats
 import random
 import statistics
 import tempfile
+import warnings
+from collections import Counter
+from copy import deepcopy
+from datetime import UTC, datetime
+from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
-import warnings
 
 from omegaconf import OmegaConf
 
@@ -209,7 +209,7 @@ def run(args):
 
         shapes = [shape(value) for value in raw]
         report = {
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "timestamp_utc": datetime.now(UTC).isoformat(),
             "python": platform.python_version(),
             "omegaconf": omegaconf.__version__,
             "grid": args.grid,

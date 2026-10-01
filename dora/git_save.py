@@ -4,21 +4,20 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from contextlib import contextmanager
-from contextvars import ContextVar
 import importlib.util
 import logging
 import os
 import shlex
-import sys
 import subprocess as sp
+import sys
 import typing as tp
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
-from .main import DecoratedMain
 from .log import fatal
+from .main import DecoratedMain
 from .xp import XP
-
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +26,8 @@ class CommandError(Exception):
     pass
 
 
-def run_command(command, **kwargs):
-    proc = sp.run(command, stdout=sp.PIPE, stderr=sp.STDOUT, **kwargs)
+def run_command(command, *, check=False, **kwargs):
+    proc = sp.run(command, stdout=sp.PIPE, stderr=sp.STDOUT, check=check, **kwargs)
     if proc.returncode:
         if isinstance(command, str):
             command_str = command
@@ -50,7 +49,7 @@ def check_repo_clean(root: Path, main: DecoratedMain):
     if grid_name is None:
         grid_name = main.package + ".grids"
     spec = importlib.util.find_spec(grid_name)
-    grid_path: tp.Optional[Path] = None
+    grid_path: Path | None = None
     if spec is not None:
         assert spec.origin is not None
         grid_path = Path(spec.origin).resolve().parent
@@ -58,14 +57,14 @@ def check_repo_clean(root: Path, main: DecoratedMain):
         if not line:
             continue
         parts = shlex.split(line)
-        paths: tp.List[str] = []
+        paths: list[str] = []
         if len(parts) == 2:
             paths.append(parts[1])
         elif len(parts) == 4:
             assert parts[3] == "->"
             paths += [parts[1], parts[2]]
         else:
-            assert "Invalid parts", parts
+            raise AssertionError(f"Invalid git status entry: {parts!r}")
         line_clean = True
         for path in paths:
             if grid_path is None:
@@ -140,7 +139,7 @@ def enter_clone(clone: Path):
     """Context manager that temporarily relocates to a clean clone of the
     current git repository.
     """
-    cwd = Path(".").resolve()
+    cwd = Path.cwd()
     root = get_git_root()
     relative_path = cwd.relative_to(root)
 
@@ -162,15 +161,15 @@ def assign_clone(xp: XP, clone: Path):
         elif code.is_dir():
             code.rename(code.parent / "old_code")
         else:
-            assert "code folder should be symlink or folder", code
+            raise AssertionError(f"code folder should be symlink or folder: {code}")
     code.symlink_to(clone)
 
 
-_run_cwd: ContextVar[tp.Optional[Path]] = ContextVar("dora_run_cwd", default=None)
+_run_cwd: ContextVar[Path | None] = ContextVar("dora_run_cwd", default=None)
 
 
 @contextmanager
-def enter_run_dir(folder: tp.Optional[Path]):
+def enter_run_dir(folder: Path | None):
     """Keep relative user paths anchored while the fast backend runs an XP."""
     cwd = Path.cwd()
     token = _run_cwd.set(cwd)

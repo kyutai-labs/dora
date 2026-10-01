@@ -5,18 +5,18 @@
 # LICENSE file in the root directory of this source tree.
 "HiPlot support."
 
-from concurrent.futures import ProcessPoolExecutor
 import math
 import pydoc
 import shlex
 import typing as tp
+from concurrent.futures import ProcessPoolExecutor
 
 import hiplot
 from omegaconf import OmegaConf
 from omegaconf.basecontainer import BaseContainer
 
-from .xp import XP
 from ._utils import get_main
+from .xp import XP
 
 
 def roundf(value: float, precision: int = 4):
@@ -30,10 +30,10 @@ class HiPlotExplorer:
     """You can inherit this class in order to make custom HiPlotExplorer,
     for instance to select a subset of the metrics."""
 
-    def process_metrics(self, xp: XP, metrics: tp.Dict[str, tp.Any]):
+    def process_metrics(self, xp: XP, metrics: dict[str, tp.Any]):
         return metrics
 
-    def process_history(self, xp: XP, history: tp.List[tp.Dict[str, tp.Any]]):
+    def process_history(self, xp: XP, history: list[dict[str, tp.Any]]):
         return [self.process_metrics(xp, m) for m in history]
 
     def postprocess_exp(self, exp: hiplot.Experiment):
@@ -75,7 +75,7 @@ def load(uri: str) -> tp.Any:
     main = get_main()
 
     sigs = set()
-    explorer_module: tp.Optional[str] = None
+    explorer_module: str | None = None
     explorer_name = "HiPlotExplorer"
     value: tp.Any
     grids_name = main.dora.grid_package
@@ -130,7 +130,7 @@ def load(uri: str) -> tp.Any:
         xps_name_parts.append(parts)
     all_columns -= set(reference.keys())
     for xp, parts in zip(xps, xps_name_parts):
-        values: tp.Dict[str, tp.Any] = {}
+        values: dict[str, tp.Any] = {}
         for key, value in parts.items():
             if key not in reference:
                 sname = main.short_name_part(key, value).split("=", 1)[0]
@@ -151,7 +151,7 @@ def load(uri: str) -> tp.Any:
                 value = ", ".join(map(str, value))
             values[key] = value
         values["sig"] = xp.sig
-        from_uid: tp.Optional[str] = None
+        from_uid: str | None = None
         xp.link.load()
         history = explorer.process_history(xp, xp.link.history)
         metric_names = set()
@@ -164,7 +164,7 @@ def load(uri: str) -> tp.Any:
             dp = hiplot.Datapoint(uid=f"{xp.sig}_{k}", from_uid=from_uid, values=point_values)
             from_uid = dp.uid
             exp.datapoints.append(dp)
-            for key in flat_metrics.keys():
+            for key in flat_metrics:
                 metric_names.add(key)
                 exp.parameters_definition[key].label_css = STYLE.metrics
 

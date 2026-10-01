@@ -6,11 +6,11 @@
 
 from ..conf import SubmitRules
 from ..explore import Explorer, Launcher
+from ..grid import RunGridArgs, run_grid
 from ..hydra import HydraMain
-from ..grid import run_grid, RunGridArgs
 from .fake_shep import mock_shep
-from .test_main import get_main
 from .test_hydra import get_main as get_main_hydra
+from .test_main import get_main
 
 _ret = None
 
@@ -176,6 +176,7 @@ def test_read_only_shepherd_refuses_to_commit(tmpdir):
     caller that only wants to look at state needs a way to opt out.
     """
     import pytest
+
     from ..shep import Shepherd
 
     with mock_shep():
@@ -306,6 +307,7 @@ def test_dry_run_records_no_metric_spec(tmpdir):
 
 def test_pretty_grid_respects_explorer_wrapping(tmpdir, monkeypatch, capsys):
     import treetable as tt
+
     from ..grid import monitor
     from ..inspect import ANSI_RE
     from ..shep import Shepherd

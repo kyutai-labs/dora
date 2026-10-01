@@ -275,7 +275,7 @@ def test_log_keeps_colour_only_when_pretty(dora, capsys, monkeypatch):
     (folder / "submitit").mkdir()
     (folder / "submitit" / "1_0_log.out").write_text("\x1b[36mhello\x1b[0m\n")
 
-    base = dict(targets=["77777777"], limit=5, grep=None, rank=None, job=None)
+    base = {"targets": ["77777777"], "limit": 5, "grep": None, "rank": None, "job": None}
     inspect.log_action(_Args(**base, compact=True), dora)
     assert "\x1b" not in capsys.readouterr().out
 

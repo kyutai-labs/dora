@@ -26,13 +26,14 @@ experiment that stopped resolving (also a failure), and one that started
 resolving again (an improvement, reported but never a failure).
 """
 
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict, dataclass, field
 import json
-from pathlib import Path
+import logging
 import re
 import sys
 import typing as tp
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 # A signature is 8 hex chars (`dora.xp._get_sig`). Experiment folders that do not
 # match were renamed by hand (backups such as `<sig>_from_be_careful`) and would
@@ -48,20 +49,20 @@ ERROR = "error"
 @dataclass
 class Entry:
     sig: str
-    argv: tp.List[str]
+    argv: list[str]
     status: str
-    got_sig: tp.Optional[str] = None
-    error: tp.Optional[str] = None
+    got_sig: str | None = None
+    error: str | None = None
 
 
 @dataclass
 class Report:
-    ok: tp.List[str] = field(default_factory=list)
-    drifted: tp.List[tp.Tuple[str, str]] = field(default_factory=list)
-    broke: tp.List[tp.Tuple[str, str]] = field(default_factory=list)
-    improved: tp.List[str] = field(default_factory=list)
-    still_error: tp.List[str] = field(default_factory=list)
-    known_drift: tp.List[str] = field(default_factory=list)
+    ok: list[str] = field(default_factory=list)
+    drifted: list[tuple[str, str]] = field(default_factory=list)
+    broke: list[tuple[str, str]] = field(default_factory=list)
+    improved: list[str] = field(default_factory=list)
+    still_error: list[str] = field(default_factory=list)
+    known_drift: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -88,7 +89,7 @@ def _short_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {text}"[:300]
 
 
-def _resolve(args: tp.Tuple[tp.Any, str, tp.List[str]]) -> Entry:
+def _resolve(args: tuple[tp.Any, str, list[str]]) -> Entry:
     """Recompute the signature for one experiment. Module level so it pickles."""
     main, sig, argv = args
     try:
@@ -98,7 +99,7 @@ def _resolve(args: tp.Tuple[tp.Any, str, tp.List[str]]) -> Entry:
     return Entry(sig=sig, argv=argv, status=OK if got == sig else DRIFT, got_sig=got)
 
 
-def iter_sigs(main) -> tp.List[str]:
+def iter_sigs(main) -> list[str]:
     """Every signature that has a cached argv, i.e. that Dora can still address."""
     xps = main.dora.dir / main.dora.xps
     if not xps.is_dir():
@@ -108,7 +109,7 @@ def iter_sigs(main) -> tp.List[str]:
     )
 
 
-def build(main, sigs: tp.Optional[tp.Sequence[str]] = None, workers: int = 16) -> tp.List[Entry]:
+def build(main, sigs: tp.Sequence[str] | None = None, workers: int = 16) -> list[Entry]:
     """Recompute every signature, in parallel. Hydra keeps global state, so each
     worker gets its own process; `DecoratedMain` pickles by dotted name."""
     if sigs is None:
@@ -117,7 +118,8 @@ def build(main, sigs: tp.Optional[tp.Sequence[str]] = None, workers: int = 16) -
     for sig in sigs:
         try:
             argv = list(main.get_argv_from_sig(sig))
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, RuntimeError) as exc:
+            logging.getLogger(__name__).debug("Cannot load experiment metadata: %s", exc)
             continue
         tasks.append((main, sig, argv))
     if not tasks:
@@ -126,7 +128,7 @@ def build(main, sigs: tp.Optional[tp.Sequence[str]] = None, workers: int = 16) -
         return list(pool.map(_resolve, tasks, chunksize=4))
 
 
-def check(main, corpus: tp.List[Entry], workers: int = 16) -> Report:
+def check(main, corpus: list[Entry], workers: int = 16) -> Report:
     """Recompute the corpus and compare against its recorded baseline."""
     fresh = {e.sig: e for e in build(main, [e.sig for e in corpus], workers=workers)}
     report = Report()
@@ -156,7 +158,7 @@ def check(main, corpus: tp.List[Entry], workers: int = 16) -> Report:
     return report
 
 
-def save(path: Path, entries: tp.List[Entry], main) -> None:
+def save(path: Path, entries: list[Entry], main) -> None:
     payload = {
         "main": f"{main.package}.{main.main_module}",
         "dora_dir": str(main.dora.dir),
@@ -166,12 +168,12 @@ def save(path: Path, entries: tp.List[Entry], main) -> None:
     path.write_text(json.dumps(payload, indent=1))
 
 
-def load(path: Path) -> tp.List[Entry]:
+def load(path: Path) -> list[Entry]:
     payload = json.loads(Path(path).read_text())
     return [Entry(**e) for e in payload["entries"]]
 
 
-def _main(argv: tp.Optional[tp.List[str]] = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     from .._utils import get_main
 
     args = sys.argv[1:] if argv is None else argv
@@ -183,7 +185,7 @@ def _main(argv: tp.Optional[tp.List[str]] = None) -> int:
     if action == "build":
         entries = build(main)
         save(path, entries, main)
-        counts: tp.Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for e in entries:
             counts[e.status] = counts.get(e.status, 0) + 1
         print(f"wrote {len(entries)} entries to {path}: {counts}")

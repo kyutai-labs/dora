@@ -1,15 +1,16 @@
 """Check the packaged HydraMain opt-in against Hydra on an Audium grid snapshot."""
 
 import json
-from pathlib import Path
 import tempfile
 import tomllib
+from pathlib import Path
 from unittest.mock import patch
 
 from omegaconf import OmegaConf
 
 from dora.hydra import HydraMain
 from dora.project import ProjectConfig
+
 from .benchmark import (
     assert_equal,
     audit_configs,

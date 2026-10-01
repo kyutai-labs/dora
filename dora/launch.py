@@ -8,14 +8,14 @@
 Launch command.
 """
 
-from functools import partial
 import subprocess as sp
 import time
+from functools import partial
 
 from .conf import SubmitRules, update_from_args
+from .log import simple_log
 from .main import DecoratedMain
 from .shep import Shepherd
-from .log import simple_log
 from .utils import reliable_rmtree
 
 log = partial(simple_log, "Launch:")
@@ -75,7 +75,6 @@ def launch_action(args, main: DecoratedMain):
                     # Give some time to tail to do its job.
                     time.sleep(2)
                 tail_process.kill()
-            if args.attach and not done:
-                if sheep.job is not None:
-                    log(f"attach is set, killing remote job {sheep.job.job_id}")
-                    sheep.job.cancel()
+            if args.attach and not done and sheep.job is not None:
+                log(f"attach is set, killing remote job {sheep.job.job_id}")
+                sheep.job.cancel()

@@ -4,16 +4,15 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from argparse import ArgumentParser
-from pathlib import Path
 import os
 import sys
+from argparse import ArgumentParser
+from pathlib import Path
 
 import pytest
 
 from ..main import argparse_main
 from ..xp import XP, get_xp
-
 
 parser = ArgumentParser("test_main")
 parser.add_argument("--a", type=int)
@@ -30,7 +29,7 @@ def get_main(dora_dir, shared=None):
     @argparse_main(parser=parser, exclude=EXCLUDE, dir=dora_dir, shared=shared, use_underscore=True)
     def main():
         xp = get_xp()
-        cwd = str(Path(".").resolve())
+        cwd = str(Path.cwd())
         code = str((xp.folder / "code").resolve())
         if xp.dora.git_save:
             assert cwd.startswith(code), cwd

@@ -12,21 +12,21 @@ When using the API, you can provide the equivalent of the command line flags
 with the `RunGridArgs` dataclass.
 """
 
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, field
 import fnmatch
-from functools import partial
 import os
-from pathlib import Path
-import typing as tp
 import shutil
 import sys
 import time
+import typing as tp
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, field
+from functools import partial
+from pathlib import Path
 
 from .conf import SlurmConfig, SubmitRules, update_from_args
-from .explore import Explorer, Launcher, Herd
+from .explore import Explorer, Herd, Launcher
+from .log import colorize, fatal, simple_log
 from .main import DecoratedMain
-from .log import colorize, simple_log, fatal
 from .shep import Sheep, Shepherd
 from .utils import import_or_fatal, reliable_rmtree, try_load
 
@@ -63,12 +63,12 @@ class RunGridArgs:
 
     """
 
-    patterns: tp.List[str] = field(default_factory=list)
+    patterns: list[str] = field(default_factory=list)
 
     # Monitoring params
     monitor: bool = True
     interval: float = 5
-    trim: tp.Optional[int] = None
+    trim: int | None = None
     trim_last: bool = False
     silent: bool = False
 
@@ -76,7 +76,7 @@ class RunGridArgs:
     dry_run: bool = False
     cancel: bool = False
     clear: bool = False
-    init: tp.Optional[bool] = False
+    init: bool | None = False
 
     jupyter: bool = False  # Are we in a jupyter notebook (will erase cell output content first.)
 
@@ -87,9 +87,9 @@ class RunGridArgs:
     json: bool = False
 
     # Other flags, supported only from the command line.
-    folder: tp.Optional[int] = None
-    log: tp.Optional[int] = None
-    tail: tp.Optional[int] = None
+    folder: int | None = None
+    log: int | None = None
+    tail: int | None = None
 
     _from_commandline: bool = False
 
@@ -147,10 +147,10 @@ def run_grid(
     main: DecoratedMain,
     explorer: Explorer,
     grid_name: str,
-    rules: SubmitRules = SubmitRules(),
-    slurm: tp.Optional[SlurmConfig] = None,
-    args: RunGridArgs = RunGridArgs(),
-) -> tp.List[Sheep]:
+    rules: SubmitRules | None = None,
+    slurm: SlurmConfig | None = None,
+    args: RunGridArgs | None = None,
+) -> list[Sheep]:
     """
     Run a grid search, this is the API underlying the `dora grid` command,
     so that it can be used from a notebook.
@@ -169,6 +169,10 @@ def run_grid(
         A list of `dora.shep.Sheep`.
 
     """
+    if rules is None:
+        rules = SubmitRules()
+    if args is None:
+        args = RunGridArgs()
     assert isinstance(explorer, Explorer)
     if slurm is None:
         slurm = main.get_slurm_config()
@@ -226,7 +230,7 @@ def run_grid(
             to_unlink.append(child)
             try:
                 old_sheep = shepherd.get_sheep_from_sig(child.name)
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 -- recover from arbitrary project loaders
                 log(f"Error when trying to load old sheep {child.name}: {error}")
                 # We fallback on manually loading the job file.
                 job_file = child / main.dora.shep.job_file
@@ -333,7 +337,8 @@ def run_grid(
             if not sheep.log.exists():
                 fatal(f"Log file does not exist for sheep {name}.")
             try:
-                shutil.copyfileobj(open(sheep.log), sys.stdout)
+                with open(sheep.log) as logfile:
+                    shutil.copyfileobj(logfile, sys.stdout)
             except BrokenPipeError:
                 pass
         return sheeps
@@ -389,8 +394,8 @@ def _match_name(name, patterns):
 
 
 def _filter_grid_sheeps(
-    patterns: tp.List[str], main: DecoratedMain, sheeps: tp.List[Sheep]
-) -> tp.List[Sheep]:
+    patterns: list[str], main: DecoratedMain, sheeps: list[Sheep]
+) -> list[Sheep]:
     indexes = []
     for p in list(patterns):
         try:
@@ -413,7 +418,7 @@ def monitor(
     args: tp.Any,
     main: DecoratedMain,
     explorer: Explorer,
-    herd: tp.List[Sheep],
+    herd: list[Sheep],
     maybe_print: tp.Callable,
     stale: tp.Sequence[Sheep] = (),
 ) -> bool:

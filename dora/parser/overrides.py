@@ -4,8 +4,8 @@ This deliberately does not use YAML for CLI values: Hydra treats ``yes``,
 ``01`` and quoted escapes differently from YAML (and from JSON).
 """
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from .errors import ConfigError, UnsupportedFeature

@@ -1,8 +1,8 @@
 """Persisted Slurm settings and targeted status actions, using a fake scheduler."""
 
+import json
 from argparse import Namespace
 from dataclasses import asdict
-import json
 from unittest.mock import Mock
 
 import pytest
@@ -12,6 +12,7 @@ from dora import _utils, inspect, manage
 from dora.__main__ import get_parser
 from dora.conf import SlurmConfig
 from dora.shep import Shepherd, _JobArray
+
 from .fake_shep import FakeJob, mock_shep
 from .test_main import get_main
 
@@ -45,16 +46,16 @@ def launch(main, shepherd, argv=(), **kwargs):
 
 
 def args(*targets, **kwargs):
-    values = dict(
-        targets=list(targets),
-        cancel=False,
-        restart=False,
-        dry_run=False,
-        json=True,
-        limit=None,
-        main_module=None,
-        package=None,
-    )
+    values = {
+        "targets": list(targets),
+        "cancel": False,
+        "restart": False,
+        "dry_run": False,
+        "json": True,
+        "limit": None,
+        "main_module": None,
+        "package": None,
+    }
     values.update(kwargs)
     return Namespace(**values)
 

@@ -15,18 +15,19 @@ with the `dora grid` command.
 """
 
 from __future__ import annotations
-from collections import OrderedDict
-from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor, Future  # noqa: F401
-from contextlib import contextmanager
-from dataclasses import dataclass, field
+
 import typing as tp
+from collections import OrderedDict
+from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import dataclass, field
 
 if tp.TYPE_CHECKING:
     from treetable.table import _Node
 
 from .conf import SlurmConfig
-from .shep import Shepherd, Sheep
+from .shep import Sheep, Shepherd
 
 
 class ProcessException(RuntimeError):
@@ -35,28 +36,28 @@ class ProcessException(RuntimeError):
 
 def _process(
     shepherd: Shepherd,
-    argv: tp.List[str],
+    argv: list[str],
     slurm: SlurmConfig,
-    job_array_index: tp.Optional[int] = None,
+    job_array_index: int | None = None,
 ):
     try:
         return (shepherd.get_sheep_from_argv(argv), slurm, job_array_index)
     except Exception as exc:
-        raise ProcessException(repr(exc))
+        raise ProcessException(repr(exc)) from exc
 
 
 @dataclass
 class Herd:
     """Represents a herd of sheeps ready to be scheduled."""
 
-    sheeps: tp.Dict[str, Sheep] = field(default_factory=OrderedDict)
-    slurm_configs: tp.Dict[str, SlurmConfig] = field(default_factory=dict)
-    job_arrays: tp.List[tp.List[str]] = field(default_factory=list)
+    sheeps: dict[str, Sheep] = field(default_factory=OrderedDict)
+    slurm_configs: dict[str, SlurmConfig] = field(default_factory=dict)
+    job_arrays: list[list[str]] = field(default_factory=list)
 
     # Sheeps that need to be evaluated in a process pool for faster execution.
-    _pendings: tp.List[Future] = field(default_factory=list)
+    _pendings: list[Future] = field(default_factory=list)
 
-    _job_array_launcher: tp.Optional["Launcher"] = None
+    _job_array_launcher: Launcher | None = None
 
     def complete(self):
         """Complete all pending sheep evaluations and add them to the herd."""
@@ -68,9 +69,9 @@ class Herd:
     def add_sheep(
         self,
         shepherd: Shepherd,
-        argv: tp.List[str],
+        argv: list[str],
         slurm: SlurmConfig,
-        pool: tp.Optional[ProcessPoolExecutor] = None,
+        pool: ProcessPoolExecutor | None = None,
     ):
         if self._job_array_launcher is None:
             self.job_arrays.append([])
@@ -80,9 +81,7 @@ class Herd:
         else:
             self._pendings.append(pool.submit(_process, shepherd, argv, slurm, job_array_index))
 
-    def _add_sheep(
-        self, sheep: Sheep, slurm: SlurmConfig, job_array_index: tp.Optional[int] = None
-    ):
+    def _add_sheep(self, sheep: Sheep, slurm: SlurmConfig, job_array_index: int | None = None):
         if sheep.xp.sig in self.sheeps:
             return
         self.sheeps[sheep.xp.sig] = sheep
@@ -110,8 +109,8 @@ class Launcher:
         shepherd: Shepherd,
         slurm: SlurmConfig,
         herd: Herd,
-        argv: tp.List[str] = [],
-        pool: tp.Optional[ProcessPoolExecutor] = None,
+        argv: tp.Sequence[str] = (),
+        pool: ProcessPoolExecutor | None = None,
     ):
         self._shepherd = shepherd
         self._main = self._shepherd.main
@@ -217,11 +216,11 @@ class Explorer:
     def __call__(self, launcher: Launcher):
         self.explore(launcher)
 
-    def get_grid_metrics(self) -> tp.List["_Node"]:
+    def get_grid_metrics(self) -> list[_Node]:
         """Return the metrics that should be displayed in the tracking table."""
         return []
 
-    def get_grid_meta(self) -> tp.List["_Node"]:
+    def get_grid_meta(self) -> list[_Node]:
         """Returns the list of Meta information to display for each XP/job."""
         import treetable as tt
 
@@ -236,7 +235,7 @@ class Explorer:
     def get_colors(self):
         return ["0", "38;5;245"]
 
-    def process_sheep(self, sheep: Sheep, history: tp.List[dict]) -> dict:
+    def process_sheep(self, sheep: Sheep, history: list[dict]) -> dict:
         """Process a sheep to return a dict (with possibly nested dict inside)
         matching the schema given by `get_grid_metrics`.
         This gives more possiblities than `process_history`, which is kept for compatibility,
@@ -248,7 +247,7 @@ class Explorer:
         """
         raise NotImplementedError()
 
-    def process_history(self, history: tp.List[dict]) -> dict:
+    def process_history(self, history: list[dict]) -> dict:
         """Process history to return a dict (with possibly nested dict inside)
         matching the schema given by `get_grid_metrics`.
         """

@@ -25,10 +25,10 @@ overrides = [
     "+dataset.train.augmenter=basic",
 ]
 
-raw = parser.compose(overrides)          # independent dict; interpolations stay strings
+raw = parser.compose(overrides)  # independent dict; interpolations stay strings
 print(raw["dataset"]["batch_size"])
 
-cfg = parser.compose_config(overrides)   # OmegaConf DictConfig with struct mode
+cfg = parser.compose_config(overrides)  # OmegaConf DictConfig with struct mode
 print(cfg.dataset.batch_size)
 print(cfg.conditioners.speaker_wavs.encodec.compression_model_checkpoint)
 ~~~

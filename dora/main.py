@@ -14,17 +14,16 @@ Slurm configuration, storage location, naming conventions etc.
 """
 
 import argparse
-from collections import OrderedDict
 import importlib
 import json
-from pathlib import Path
-import typing as tp
 import sys
+import typing as tp
+from collections import OrderedDict
+from pathlib import Path
 
 from .conf import DoraConfig, SlurmConfig
 from .names import NamesMixin
-from .xp import XP, load_xp, _context
-
+from .xp import XP, _context, load_xp
 
 MainFun = tp.Callable
 
@@ -86,7 +85,7 @@ class DecoratedMain(NamesMixin):
         with _context.enter_xp(xp):
             return self._main()
 
-    def _is_active(self, argv: tp.List[str]) -> bool:
+    def _is_active(self, argv: list[str]) -> bool:
         return True
 
     def _main(self):
@@ -99,7 +98,7 @@ class DecoratedMain(NamesMixin):
         """Return an XP given a list of arguments."""
         raise NotImplementedError()
 
-    def _get_argv(self) -> tp.List[str]:
+    def _get_argv(self) -> list[str]:
         # Returns the actual list of arguments, typically from sys.argv.
         # This is only called when the XP is executed, not when it is obtained
         # by other means, e.g. from a grid search file, or info command.
@@ -115,12 +114,14 @@ class DecoratedMain(NamesMixin):
         can be easily shared using its signature.
         """
         xp.folder.mkdir(exist_ok=True, parents=True)
-        json.dump(xp.argv, open(xp._argv_cache, "w"))
+        with open(xp._argv_cache, "w") as file:
+            json.dump(xp.argv, file)
         if xp.delta is not None:
             # Persisted here because this is the only moment it is known for
             # certain. Recomputing it later needs the config tree exactly as it
             # was, and config trees move on. See `XP._delta_cache`.
-            json.dump(xp.delta, open(xp._delta_cache, "w"))
+            with open(xp._delta_cache, "w") as file:
+                json.dump(xp.delta, file)
         if xp._shared_argv_cache is not None:
             # Create xps and XP folders with 0777 mode.
             xp._shared_argv_cache.parent.parent.mkdir(exist_ok=True, parents=True, mode=0o777)
@@ -130,7 +131,8 @@ class DecoratedMain(NamesMixin):
                 xp._shared_argv_cache.parent.chmod(0o777)
             except PermissionError:
                 pass
-            json.dump(xp.argv, open(xp._shared_argv_cache, "w"))
+            with open(xp._shared_argv_cache, "w") as file:
+                json.dump(xp.argv, file)
             try:
                 xp._shared_argv_cache.chmod(0o777)
             except PermissionError:
@@ -192,7 +194,7 @@ class DecoratedMain(NamesMixin):
     def __repr__(self):
         return f"DecoratedMain({self.main})"
 
-    def value_to_argv(self, arg: tp.Any) -> tp.List[str]:
+    def value_to_argv(self, arg: tp.Any) -> list[str]:
         """Convert a Python value to argv. arg can be either:
         - a list, then each entry will be converted and all argv are concatenated.
         - a str, then it is directly an argv entry.
@@ -200,7 +202,7 @@ class DecoratedMain(NamesMixin):
         """
         raise NotImplementedError()
 
-    def get_xp_history(self, xp: XP) -> tp.List[dict]:
+    def get_xp_history(self, xp: XP) -> list[dict]:
         """Return the metrics for a given XP. By default this will look into
         the `history.json` file, that can be populated with the Link class.
 
@@ -233,7 +235,7 @@ class ArgparseMain(DecoratedMain):
         main: MainFun,
         dora: DoraConfig,
         parser: argparse.ArgumentParser,
-        slurm: tp.Optional[SlurmConfig] = None,
+        slurm: SlurmConfig | None = None,
         use_underscore: bool = True,
     ):
         super().__init__(main, dora)
@@ -251,7 +253,7 @@ class ArgparseMain(DecoratedMain):
         xp = XP(dora=self.dora, cfg=args, argv=argv, delta=delta)
         return xp
 
-    def value_to_argv(self, arg: tp.Any) -> tp.List[str]:
+    def value_to_argv(self, arg: tp.Any) -> list[str]:
         argv = []
         if isinstance(arg, str):
             argv.append(arg)
@@ -267,7 +269,10 @@ class ArgparseMain(DecoratedMain):
             for part in arg:
                 argv += self.value_to_argv(part)
         else:
-            raise ValueError(f"Can only process dict, tuple, lists and str, but got {arg}")
+            # Preserve the existing ValueError validation API.
+            raise ValueError(  # noqa: TRY004
+                f"Can only process dict, tuple, lists and str, but got {arg}"
+            )
         return argv
 
     def get_name_parts(self, xp: XP) -> OrderedDict:
@@ -290,10 +295,10 @@ class ArgparseMain(DecoratedMain):
 def argparse_main(
     parser: argparse.ArgumentParser,
     *,
-    dir: tp.Union[str, Path] = "./outputs",
+    dir: str | Path = "./outputs",
     exclude: tp.Sequence[str] = [],
-    slurm: tp.Optional[SlurmConfig] = None,
-    shared: tp.Optional[tp.Union[str, Path]] = None,
+    slurm: SlurmConfig | None = None,
+    shared: str | Path | None = None,
     use_underscore: bool = True,
     **kwargs,
 ):

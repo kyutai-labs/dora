@@ -7,9 +7,8 @@
 """Internal utilities, likely shouldn't be called from outside."""
 
 import os
-from pathlib import Path
 import sys
-import typing as tp
+from pathlib import Path
 
 from . import project
 from .conf import DoraConfig
@@ -18,13 +17,16 @@ from .main import DecoratedMain
 from .utils import import_or_fatal
 
 
-def _find_package(main_module: str, cwd: tp.Optional[Path] = None):
+def _find_package(main_module: str, cwd: Path | None = None):
     cwd = cwd or Path(".")
     candidates = []
     for child in cwd.iterdir():
-        if child.is_dir() and (child / "__init__.py").exists():
-            if (child / f"{main_module}.py").exists():
-                candidates.append(child.name)
+        if (
+            child.is_dir()
+            and (child / "__init__.py").exists()
+            and (child / f"{main_module}.py").exists()
+        ):
+            candidates.append(child.name)
     if len(candidates) == 0:
         fatal(
             "Could not find a training package. Use -P, or set DORA_PACKAGE to set the "
@@ -42,14 +44,14 @@ def _find_package(main_module: str, cwd: tp.Optional[Path] = None):
         )
 
 
-def get_main(main_module: tp.Optional[str] = None, package: tp.Optional[str] = None):
+def get_main(main_module: str | None = None, package: str | None = None):
     """Import the project's training module and return its `DecoratedMain`.
 
     Precedence for locating it: explicit argument, then environment, then
     `dora.toml`, then scanning for a package that contains the module.
     """
     conf = project.load()
-    root = conf.root if conf is not None else Path(".").resolve()
+    root = conf.root if conf is not None else Path.cwd()
 
     if main_module is None:
         main_module = (
@@ -76,7 +78,7 @@ def get_main(main_module: tp.Optional[str] = None, package: tp.Optional[str] = N
     return main
 
 
-def get_dora_config() -> tp.Optional[DoraConfig]:
+def get_dora_config() -> DoraConfig | None:
     """The project's `DoraConfig` without importing the project, if possible.
 
     Read-only commands need little more than the experiment directory, and

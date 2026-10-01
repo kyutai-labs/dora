@@ -4,24 +4,23 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+import sys
+import time
 from contextlib import ExitStack
 from functools import partial
-import os
 from shutil import rmtree
-import sys
-import typing as tp
-import time
 
 from . import git_save
 from .executor import start_ddp_workers
+from .log import disable_logging, red, simple_log
 from .main import DecoratedMain
-from .log import disable_logging, simple_log, red
 from .shep import Shepherd
 
 log = partial(simple_log, "Run:")
 
 
-def check_job_and_clear(argv: tp.List[str], main: DecoratedMain, clear: bool = False):
+def check_job_and_clear(argv: list[str], main: DecoratedMain, clear: bool = False):
     """This will check if an existing job is running and warn,
     unless --clear is passed, in which case we must cancel it.
     """

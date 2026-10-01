@@ -9,15 +9,15 @@ The info commands gets the information on a Sheep or XP and can be used
 to retrieve the job status, logs etc.
 """
 
-from functools import partial
 import json
 import os
 import shutil
 import sys
+from functools import partial
 
+from .log import fatal, simple_log
 from .main import DecoratedMain
 from .shep import Shepherd
-from .log import simple_log, fatal
 
 log = partial(simple_log, "Info:")
 
@@ -55,7 +55,8 @@ def info_action(args, main: DecoratedMain):
             fatal("No log, sheep hasn't been scheduled yet.")
         if not sheep.log.exists():
             fatal(f"Log {sheep.log} does not exist")
-        shutil.copyfileobj(open(sheep.log, "r"), sys.stdout, 4096)
+        with open(sheep.log) as logfile:
+            shutil.copyfileobj(logfile, sys.stdout, 4096)
     if args.tail:
         if not sheep.log.exists():
             fatal(f"Log {sheep.log} does not exist")

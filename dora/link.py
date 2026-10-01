@@ -4,11 +4,10 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import json
 import functools
+import json
 import logging
 from pathlib import Path
-import typing as tp
 
 from . import utils
 
@@ -50,11 +49,11 @@ class Link:
     as the history file.
     """
 
-    def __init__(self, history_file: tp.Optional[Path] = None):
+    def __init__(self, history_file: Path | None = None):
         """
         Initialize the Link with Dora.
         """
-        self.history: tp.List[dict] = []
+        self.history: list[dict] = []
         self.history_file = history_file
 
     # Retry operation as history file might be stale for  update by running XP
@@ -78,10 +77,13 @@ class Link:
         with utils.write_and_rename(self.history_file, "w") as tmp:
             json.dump(self.history, tmp, indent=2)
 
-    def update_history(self, history: tp.List[dict]):
+    def update_history(self, history: list[dict]):
         history = utils.jsonable(history)
         if not isinstance(history, list):
-            raise ValueError(f"history must be a list, but got {type(history)}")
+            # Preserve the existing ValueError validation API.
+            raise ValueError(  # noqa: TRY004
+                f"history must be a list, but got {type(history)}"
+            )
         self.history[:] = history
         self._commit()
 

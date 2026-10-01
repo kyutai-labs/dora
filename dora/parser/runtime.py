@@ -1,17 +1,17 @@
 """Single-run execution for the fast parser; no Hydra runtime or plugins."""
 
-from contextlib import contextmanager
 import logging
 import re
 import sys
+from contextlib import contextmanager
 
 from omegaconf import OmegaConf
 
-from .errors import UnsupportedFeature
 from ..distrib import get_distrib_spec
 from ..git_save import enter_run_dir
 from ..main import MainFun
 from ..xp import XP
+from .errors import UnsupportedFeature
 
 
 def chdir_for_version(kwargs: dict) -> bool:

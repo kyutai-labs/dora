@@ -4,18 +4,19 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
+from hydra.errors import ConfigCompositionException
 
+from ..git_save import assign_clone, enter_clone, get_new_clone, to_absolute_path
 from ..hydra import hydra_main
-from ..git_save import assign_clone, get_new_clone, enter_clone, to_absolute_path
-from ..xp import get_xp, XP
+from ..xp import XP, get_xp
 
 _ret = None
 
-current_path = Path(".").resolve()
+current_path = Path.cwd()
 
 
 def _main(cfg):
@@ -115,7 +116,7 @@ def test_hydra(tmpdir):
     assert not hasattr(xp2.cfg, "plop")
 
     argv = ["group=lapin", "plop.b=5"]
-    with pytest.raises(Exception):
+    with pytest.raises(ConfigCompositionException):
         xp2 = call(main, argv)
 
 
@@ -192,3 +193,17 @@ def test_get_existing_xp_without_delta_falls_back_to_sig(tmpdir):
     loaded = main.get_existing_xp_from_sig(xp.sig)
     assert loaded.delta is None
     assert main.get_name(loaded) == xp.sig
+
+
+def test_config_comparisons_do_not_share_default_paths():
+    from omegaconf import OmegaConf
+
+    from ..hydra import _compare_config
+
+    reference = OmegaConf.create({"outer": {"value": 1}})
+    changed = OmegaConf.create({"outer": {"value": 2}})
+    first = _compare_config(reference, changed)
+    assert next(first).path == ["outer", "value"]
+    # Starting another comparison while the first is suspended must not reuse its path.
+    assert next(_compare_config(reference, changed)).path == ["outer", "value"]
+    first.close()

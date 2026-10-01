@@ -6,8 +6,8 @@
 
 import os
 import pickle
-import subprocess as sp
 import shutil
+import subprocess as sp
 
 import pytest
 
